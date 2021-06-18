@@ -1,4 +1,4 @@
-OGNL Script Plugin for Fess [![Build Status](https://travis-ci.org/codelibs/fess-script-ognl.svg?branch=master)](https://travis-ci.org/codelibs/fess-script-ognl)
+OGNL Script Plugin for Fess
 ==========================
 
 ## Overview
