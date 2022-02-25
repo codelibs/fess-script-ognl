@@ -1,5 +1,5 @@
 /*
- * Copyright 2012-2021 CodeLibs Project and the Others.
+ * Copyright 2012-2022 CodeLibs Project and the Others.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ public class OgnlEngine extends AbstractScriptEngine {
     private static final Logger logger = LogManager.getLogger(OgnlEngine.class);
 
     @Override
-    public Object evaluate(String template, Map<String, Object> paramMap) {
+    public Object evaluate(final String template, final Map<String, Object> paramMap) {
         if (StringUtil.isBlank(template)) {
             return null;
         }
