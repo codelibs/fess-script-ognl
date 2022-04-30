@@ -4,7 +4,7 @@
 	<artifactId>fess-script-ognl</artifactId>
 	<packaging>jar</packaging>
 	<name>OGNL Script Plugin</name>
-	<version>14.1.0</version>
+	<version>14.1.1-SNAPSHOT</version>
 	<scm>
 		<connection>scm:git:git@github.com:codelibs/fess-script-ognl.git</connection>
 		<developerConnection>scm:git:git@github.com:codelibs/fess-script-ognl.git</developerConnection>
