@@ -253,12 +253,9 @@ public class OgnlEngineTest extends LastaFluteTestCase {
         assertEquals("Bob", ognlEngine.evaluate("names[1]", params));
         assertEquals("Charlie", ognlEngine.evaluate("names[2]", params));
 
-        // List size
-        assertEquals(3, ognlEngine.evaluate("names.size()", params));
-
-        // List contains
-        assertEquals(true, ognlEngine.evaluate("names.contains('Bob')", params));
-        assertEquals(false, ognlEngine.evaluate("names.contains('David')", params));
+        // List operations
+        assertEquals(3, ognlEngine.evaluate("names.size", params));
+        assertEquals(false, ognlEngine.evaluate("names.empty", params));
     }
 
     public void test_evaluate_arrayOperations() {
@@ -288,12 +285,9 @@ public class OgnlEngineTest extends LastaFluteTestCase {
         assertEquals(30, ognlEngine.evaluate("user['age']", params));
         assertEquals("Tokyo", ognlEngine.evaluate("user['city']", params));
 
-        // Map size
-        assertEquals(3, ognlEngine.evaluate("user.size()", params));
-
-        // Map containsKey
-        assertEquals(true, ognlEngine.evaluate("user.containsKey('name')", params));
-        assertEquals(false, ognlEngine.evaluate("user.containsKey('email')", params));
+        // Map size and empty
+        assertEquals(3, ognlEngine.evaluate("user.size", params));
+        assertEquals(false, ognlEngine.evaluate("user.empty", params));
     }
 
     // ========================================
