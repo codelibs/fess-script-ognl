@@ -15,8 +15,6 @@
  */
 package org.codelibs.fess.script.ognl;
 
-import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
