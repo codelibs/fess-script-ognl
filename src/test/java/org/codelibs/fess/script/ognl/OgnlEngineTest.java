@@ -259,7 +259,7 @@ public class OgnlEngineTest extends LastaFluteTestCase {
 
     public void test_evaluate_arrayOperations() {
         final Map<String, Object> params = new HashMap<>();
-        int[] numbers = {10, 20, 30, 40, 50};
+        int[] numbers = { 10, 20, 30, 40, 50 };
         params.put("numbers", numbers);
 
         // Array access
