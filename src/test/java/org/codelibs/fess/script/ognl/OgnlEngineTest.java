@@ -15,6 +15,8 @@
  */
 package org.codelibs.fess.script.ognl;
 
+import org.junit.jupiter.api.TestInfo;
+
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -22,9 +24,9 @@ import java.util.Map;
 
 import org.codelibs.fess.exception.JobProcessingException;
 import org.codelibs.fess.util.ComponentUtil;
-import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
+import org.codelibs.fess.script.ognl.UnitScriptTestCase;
 
-public class OgnlEngineTest extends LastaFluteTestCase {
+public class OgnlEngineTest extends UnitScriptTestCase {
     public OgnlEngine ognlEngine;
 
     @Override
@@ -38,15 +40,15 @@ public class OgnlEngineTest extends LastaFluteTestCase {
     }
 
     @Override
-    public void setUp() throws Exception {
-        super.setUp();
+    public void setUp(TestInfo testInfo) throws Exception {
+        super.setUp(testInfo);
         ognlEngine = new OgnlEngine();
     }
 
     @Override
-    public void tearDown() throws Exception {
+    public void tearDown(TestInfo testInfo) throws Exception {
         ComponentUtil.setFessConfig(null);
-        super.tearDown();
+        super.tearDown(testInfo);
     }
 
     // ========================================
