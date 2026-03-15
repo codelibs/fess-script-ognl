@@ -18,7 +18,7 @@
 		<relativePath />
 	</parent>
 	<properties>
-		<ognl.version>3.2.20</ognl.version>
+		<ognl.version>3.4.7</ognl.version>
 	</properties>
 	<build>
 		<plugins>
