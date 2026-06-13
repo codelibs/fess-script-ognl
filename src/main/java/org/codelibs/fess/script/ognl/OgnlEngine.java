@@ -27,8 +27,21 @@ import org.lastaflute.di.core.factory.SingletonLaContainerFactory;
 
 import ognl.Ognl;
 
+/**
+ * Script engine that evaluates OGNL (Object-Graph Navigation Language) expressions.
+ * <p>
+ * The Fess DI container is exposed to the expression context under the {@code container} key,
+ * allowing scripts to access registered components.
+ */
 public class OgnlEngine extends AbstractScriptEngine {
     private static final Logger logger = LogManager.getLogger(OgnlEngine.class);
+
+    /**
+     * Creates a new {@link OgnlEngine}.
+     */
+    public OgnlEngine() {
+        super();
+    }
 
     @Override
     public Object evaluate(final String template, final Map<String, Object> paramMap) {
