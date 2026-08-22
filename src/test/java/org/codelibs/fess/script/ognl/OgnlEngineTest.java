@@ -927,6 +927,28 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         }
     }
 
+    @Test
+    public void test_evaluate_contextVariableSyntax() {
+        final Map<String, Object> params = new HashMap<>();
+        params.put("value", "Hello");
+        params.put("count", 3);
+
+        // Root access (the historical behaviour) keeps working.
+        assertEquals("Hello", ognlEngine.evaluate("value", params));
+        assertEquals("HELLO", ognlEngine.evaluate("value.toUpperCase()", params));
+
+        // The #var syntax that OGNL users expect now resolves to the same values.
+        assertEquals("Hello", ognlEngine.evaluate("#value", params));
+        assertEquals(5, ognlEngine.evaluate("#value.length()", params));
+        assertEquals("Hello3", ognlEngine.evaluate("#value + #count", params));
+
+        // #root stays available.
+        assertEquals("Hello", ognlEngine.evaluate("#root.value", params));
+
+        // Unknown names still evaluate to null rather than throwing.
+        assertNull(ognlEngine.evaluate("#nosuch", params));
+    }
+
     // ========================================
     // DI Registration Tests
     // ========================================
