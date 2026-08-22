@@ -1076,4 +1076,19 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         // javassist reaches Fess through org.lastaflute:lasta-di and is required by ognl.
         assertTrue("javassist must be on the classpath", OgnlEngine.isExpressionCompilerAvailable());
     }
+
+    @Test
+    public void test_evaluate_expressionMaxLength() {
+        ognlEngine.setExpressionMaxLength(20);
+        final Map<String, Object> params = new HashMap<>();
+        params.put("value", "x");
+
+        assertEquals("x", ognlEngine.evaluate("value", params));
+
+        final StringBuilder buf = new StringBuilder("value");
+        while (buf.length() <= 20) {
+            buf.append(" + value");
+        }
+        assertNull(ognlEngine.evaluate(buf.toString(), params));
+    }
 }

@@ -7,6 +7,7 @@
 		<!--
 		<property name="expressionCacheSize">1000</property>
 		<property name="maxScriptLogLength">200</property>
+		<property name="expressionMaxLength">4000</property>
 		-->
 		<postConstruct name="init"></postConstruct>
 		<postConstruct name="register"></postConstruct>

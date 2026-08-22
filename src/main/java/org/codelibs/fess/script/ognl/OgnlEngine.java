@@ -50,6 +50,9 @@ public class OgnlEngine extends AbstractScriptEngine {
     /** Maximum number of parsed expressions to cache. Configurable via DI. */
     protected int expressionCacheSize = 1000;
 
+    /** Maximum number of characters allowed in an expression. Configurable via DI. */
+    protected int expressionMaxLength = 4000;
+
     /** Whether script execution is written to the audit log. Resolved in init(). */
     protected boolean scriptAuditLogEnabled;
 
@@ -109,6 +112,15 @@ public class OgnlEngine extends AbstractScriptEngine {
     }
 
     /**
+     * Sets the maximum number of characters allowed in an expression.
+     *
+     * @param expressionMaxLength the maximum expression length
+     */
+    public void setExpressionMaxLength(final int expressionMaxLength) {
+        this.expressionMaxLength = expressionMaxLength;
+    }
+
+    /**
      * Returns the parsed-expression cache.
      *
      * @return the parsed-expression cache
@@ -149,6 +161,10 @@ public class OgnlEngine extends AbstractScriptEngine {
         if (StringUtil.isBlank(template)) {
             return null;
         }
+        if (template.length() > expressionMaxLength) {
+            logger.warn("The ognl expression exceeds the maximum length {}: {}", expressionMaxLength, abbreviateScript(template));
+            return null;
+        }
         final Map<String, Object> safeParamMap = paramMap != null ? paramMap : Collections.emptyMap();
         final Map<String, Object> bindingMap = new HashMap<>(safeParamMap);
         bindingMap.put("container", SingletonLaContainerFactory.getContainer());
@@ -158,6 +174,9 @@ public class OgnlEngine extends AbstractScriptEngine {
             final Object value = Ognl.getValue(expression.getNode(), createContext(bindingMap), bindingMap);
             if (expression.markSuccessAudited()) {
                 logScriptExecution(template, "success");
+            }
+            if (value == null && logger.isDebugEnabled()) {
+                logger.debug("The ognl script evaluated to null: {} => {}", abbreviateScript(template), safeParamMap.keySet());
             }
             return value;
         } catch (final JobProcessingException e) {
