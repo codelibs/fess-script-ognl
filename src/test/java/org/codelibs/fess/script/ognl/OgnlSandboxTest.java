@@ -45,7 +45,10 @@ public class OgnlSandboxTest extends UnitScriptTestCase {
 
         assertNull("System must be blocked", engine.evaluate("@java.lang.System@getProperty(\"user.name\")", params));
         assertNull("java.io must be blocked", engine.evaluate("new java.io.File(\"/etc/hosts\").exists()", params));
-        assertNull("Class loader must be blocked", engine.evaluate("value.getClass().getClassLoader()", params));
+        // getName() is declared on java.lang.Class, which is on the deny list. Deliberately not
+        // getClassLoader(): String is loaded by the bootstrap loader, so getClassLoader() returns
+        // null in compat mode too, which would make this assertion pass for the wrong reason.
+        assertNull("Class metadata access must be blocked", engine.evaluate("value.getClass().getName()", params));
         assertNull("container must not be exposed", engine.evaluate("container", params));
     }
 
@@ -72,6 +75,11 @@ public class OgnlSandboxTest extends UnitScriptTestCase {
 
         assertNotNull("container stays exposed in compat mode", engine.evaluate("container", params));
         assertNotNull("System stays reachable in compat mode", engine.evaluate("@java.lang.System@getProperty(\"user.name\")", params));
+        // Compat-mode counterparts of the two expressions blocked in
+        // test_strictMode_blocksDangerousExpressions, pinning the contrast that proves the
+        // strict-mode assertions are not vacuous: these must return non-null here.
+        assertNotNull("java.io stays reachable in compat mode", engine.evaluate("new java.io.File(\"/etc/hosts\").exists()", params));
+        assertEquals("java.lang.String", engine.evaluate("value.getClass().getName()", params));
         assertEquals("HELLO", engine.evaluate("value.toUpperCase()", params));
     }
 

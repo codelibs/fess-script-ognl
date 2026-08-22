@@ -41,8 +41,11 @@ import ognl.OgnlContext;
 /**
  * Script engine that evaluates OGNL (Object-Graph Navigation Language) expressions.
  * <p>
- * The Fess DI container is exposed to the expression context under the {@code container} key,
- * allowing scripts to access registered components.
+ * In {@code compat} mode (the default), the Fess DI container is exposed to the expression
+ * context under the {@code container} key, allowing scripts to access registered components,
+ * and no member or class restrictions are applied. In {@code strict} mode the container is not
+ * exposed, and a class allow list ({@link FessClassResolver}) and a declaring-class deny list
+ * ({@link FessMemberAccess}) restrict what an expression can reach.
  */
 public class OgnlEngine extends AbstractScriptEngine {
     private static final Logger logger = LogManager.getLogger(OgnlEngine.class);
@@ -62,6 +65,9 @@ public class OgnlEngine extends AbstractScriptEngine {
     /** Mode name that applies the sandbox. */
     protected static final String MODE_STRICT = "strict";
 
+    /** Mode name that keeps historical, unsandboxed behaviour. This is the default. */
+    protected static final String MODE_COMPAT = "compat";
+
     /** Default class allow list applied in strict mode. */
     protected static final String DEFAULT_ALLOWED_CLASSES = "java.lang.Math,java.lang.String,java.lang.Boolean,"
             + "java.lang.Integer,java.lang.Long,java.lang.Float,java.lang.Double,java.lang.Number,"
@@ -75,7 +81,7 @@ public class OgnlEngine extends AbstractScriptEngine {
             + "java.lang.Process,java.lang.Thread,java.lang.ClassLoader,javax.script,jdk.,sun.,org.lastaflute.di";
 
     /** Evaluation mode: "compat" (default) or "strict". Configurable via DI. */
-    protected String mode = "compat";
+    protected String mode = MODE_COMPAT;
 
     /** Comma separated class allow list used in strict mode. Configurable via DI. */
     protected String allowedClasses = DEFAULT_ALLOWED_CLASSES;
@@ -83,11 +89,14 @@ public class OgnlEngine extends AbstractScriptEngine {
     /** Comma separated declaring-class deny list used in strict mode. Configurable via DI. */
     protected String deniedPackages = DEFAULT_DENIED_PACKAGES;
 
-    private boolean strict;
+    // Written once by init() (on the DI-managed startup thread) and read on every evaluate()
+    // call, which may run on a crawler worker thread. volatile so a strict=true / member /
+    // class resolver written by init() is visible to those readers without extra locking.
+    private volatile boolean strict;
 
-    private MemberAccess memberAccess;
+    private volatile MemberAccess memberAccess;
 
-    private ClassResolver classResolver;
+    private volatile ClassResolver classResolver;
 
     private OgnlExpressionCache expressionCache = new OgnlExpressionCache(1000);
 
@@ -108,14 +117,17 @@ public class OgnlEngine extends AbstractScriptEngine {
                     + " javassist is normally provided by org.lastaflute:lasta-di in WEB-INF/lib.");
         }
 
-        expressionCacheSize = getConfigValueAsInt("script.ognl.cache.size", expressionCacheSize);
-        maxScriptLogLength = getConfigValueAsInt("script.ognl.max.log.length", maxScriptLogLength);
-        expressionMaxLength = getConfigValueAsInt("script.ognl.expression.max.length", expressionMaxLength);
+        expressionCacheSize = getConfigValueAsInt("script.ognl.cache.size", expressionCacheSize, 0);
+        maxScriptLogLength = getConfigValueAsInt("script.ognl.max.log.length", maxScriptLogLength, 3);
+        expressionMaxLength = getConfigValueAsInt("script.ognl.expression.max.length", expressionMaxLength, 0);
         mode = getConfigValue("script.ognl.mode", mode);
         allowedClasses = getConfigValue("script.ognl.allowed.classes", allowedClasses);
         deniedPackages = getConfigValue("script.ognl.denied.packages", deniedPackages);
 
         strict = MODE_STRICT.equalsIgnoreCase(mode);
+        if (!strict && !MODE_COMPAT.equalsIgnoreCase(mode)) {
+            logger.warn("Unknown ognl script engine mode \"{}\"; falling back to {} mode.", mode, MODE_COMPAT);
+        }
         if (strict) {
             memberAccess = new FessMemberAccess(split(deniedPackages));
             classResolver = new FessClassResolver(split(allowedClasses));
@@ -129,10 +141,9 @@ public class OgnlEngine extends AbstractScriptEngine {
         scriptAuditLogEnabled = ComponentUtil.available() && ComponentUtil.getFessConfig().isScriptAuditLogEnabled()
                 && ComponentUtil.hasComponent("activityHelper");
 
-        if (logger.isDebugEnabled()) {
-            logger.debug("ognl script engine: mode={}, cacheSize={}, expressionMaxLength={}", mode, expressionCacheSize,
-                    expressionMaxLength);
-        }
+        final String effectiveMode = strict ? MODE_STRICT : MODE_COMPAT;
+        logger.info("ognl script engine: mode={}, cacheSize={}, expressionMaxLength={}", effectiveMode, expressionCacheSize,
+                expressionMaxLength);
     }
 
     /**
@@ -222,7 +233,11 @@ public class OgnlEngine extends AbstractScriptEngine {
     protected String getConfigValue(final String key, final String defaultValue) {
         try {
             if (ComponentUtil.available()) {
-                return ComponentUtil.getFessConfig().getSystemProperty(key, defaultValue);
+                final String value = ComponentUtil.getFessConfig().getSystemProperty(key, defaultValue);
+                // system.properties preserves trailing/leading whitespace verbatim (e.g. a
+                // trailing space after "strict" on a config line), which would otherwise make
+                // an exact mode comparison silently fail and fall back to the unsafe default.
+                return value != null ? value.trim() : defaultValue;
             }
         } catch (final Exception e) {
             if (logger.isDebugEnabled()) {
@@ -232,14 +247,29 @@ public class OgnlEngine extends AbstractScriptEngine {
         return defaultValue;
     }
 
-    private int getConfigValueAsInt(final String key, final int defaultValue) {
+    /**
+     * Reads a plugin setting as an integer, falling back to the given default on a malformed
+     * value and clamping to the given minimum on an out-of-range one.
+     *
+     * @param key the setting key, without the {@code fess.system.} prefix
+     * @param defaultValue the value used when the setting is unavailable or malformed
+     * @param minValue the smallest value this setting may safely take
+     * @return the resolved value, at least {@code minValue}
+     */
+    private int getConfigValueAsInt(final String key, final int defaultValue, final int minValue) {
         final String value = getConfigValue(key, Integer.toString(defaultValue));
+        final int parsed;
         try {
-            return Integer.parseInt(value.trim());
+            parsed = Integer.parseInt(value);
         } catch (final NumberFormatException e) {
             logger.warn("Invalid value for {}: {}. Using {}.", key, value, defaultValue);
             return defaultValue;
         }
+        if (parsed < minValue) {
+            logger.warn("Value for {} is below the minimum {}: {}. Using {}.", key, minValue, parsed, minValue);
+            return minValue;
+        }
+        return parsed;
     }
 
     private static String[] split(final String value) {
