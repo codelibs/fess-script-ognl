@@ -72,15 +72,16 @@ Administration guide.
 ## Configuration
 
 The engine reads the following settings once, at Fess startup, from `system.properties` or from
-the JVM system property `-Dfess.system.<key>` (the latter takes precedence). **Changing any of
-these requires a Fess restart** — they are not re-read at evaluation time.
+the JVM system property `-Dfess.system.<key>` (`system.properties` takes precedence — the JVM
+system property is consulted only when the key is absent from `system.properties`). **Changing
+any of these requires a Fess restart** — they are not re-read at evaluation time.
 
 | Key | Default | Notes |
 | --- | --- | --- |
 | `script.ognl.mode` | `compat` | `compat` or `strict`; see below |
-| `script.ognl.cache.size` | `1000` | Maximum number of parsed expressions cached; clamped to a minimum of `0` |
+| `script.ognl.cache.size` | `1000` | Maximum number of parsed expressions cached; clamped to a minimum of `1` |
 | `script.ognl.max.log.length` | `200` | Maximum length of script text included in warning/error log messages; clamped to a minimum of `3` |
-| `script.ognl.expression.max.length` | `4000` | Maximum number of characters an expression may contain; longer expressions are rejected (logged, evaluate to `null`); clamped to a minimum of `0` |
+| `script.ognl.expression.max.length` | `4000` | Maximum number of characters an expression may contain; longer expressions are rejected (logged, evaluate to `null`); clamped to a minimum of `1` |
 | `script.ognl.allowed.classes` | see [strict mode](#compat-vs-strict-mode) | Comma-separated class/package allow list, used only in `strict` mode |
 | `script.ognl.denied.packages` | see [strict mode](#compat-vs-strict-mode) | Comma-separated declaring-class deny list, used only in `strict` mode |
 
@@ -173,6 +174,12 @@ successful evaluation and the **first** failed evaluation of each distinct expre
 stays silent on repeats of the same text. This is intentional — a data store or field-mapping
 expression evaluates once per document per field, so logging every evaluation would flood the
 audit log with repeats of the same expression text and add nothing.
+
+"Failed evaluation" here means an expression that parsed successfully but failed while it ran
+(for example, `1 / 0`). An expression that fails to **parse** is not audited at all, at any point:
+parse failures are not added to the parsed-expression cache, so there is no cached entry to track
+dedup state against, and auditing them would flood the log with the same parse error on every
+evaluation of that expression instead of deduplicating it.
 
 This guarantee is scoped to the parsed-expression cache, not to the lifetime of the process: an
 expression is deduplicated only while it remains in the cache described by
