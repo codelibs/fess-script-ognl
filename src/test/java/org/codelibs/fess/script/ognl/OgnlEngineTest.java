@@ -104,13 +104,9 @@ public class OgnlEngineTest extends UnitScriptTestCase {
 
     @Test
     public void test_evaluate_nullParamMap() {
-        // Should not throw exception with null paramMap
-        try {
-            ognlEngine.evaluate("123", null);
-            fail("Should throw NullPointerException");
-        } catch (NullPointerException e) {
-            // Expected behavior - the constructor new HashMap<>(paramMap) will throw NPE
-        }
+        // Mirrors GroovyEngine: a null paramMap is treated as an empty map.
+        assertEquals(123, ognlEngine.evaluate("123", null));
+        assertNull(ognlEngine.evaluate("nosuchvariable", null));
     }
 
     @Test

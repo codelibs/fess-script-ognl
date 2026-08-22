@@ -15,6 +15,7 @@
  */
 package org.codelibs.fess.script.ognl;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -48,7 +49,8 @@ public class OgnlEngine extends AbstractScriptEngine {
         if (StringUtil.isBlank(template)) {
             return null;
         }
-        final Map<String, Object> bindingMap = new HashMap<>(paramMap);
+        final Map<String, Object> safeParamMap = paramMap != null ? paramMap : Collections.emptyMap();
+        final Map<String, Object> bindingMap = new HashMap<>(safeParamMap);
         bindingMap.put("container", SingletonLaContainerFactory.getContainer());
         try {
             final Object exp = Ognl.parseExpression(template);
@@ -56,7 +58,7 @@ public class OgnlEngine extends AbstractScriptEngine {
         } catch (final JobProcessingException e) {
             throw e;
         } catch (final Exception e) {
-            logger.warn("Failed to evaluate ognl script: {} => {}", template, paramMap, e);
+            logger.warn("Failed to evaluate ognl script: {} => {}", template, safeParamMap, e);
             return null;
         }
     }
