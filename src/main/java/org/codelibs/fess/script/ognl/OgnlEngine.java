@@ -66,9 +66,27 @@ public class OgnlEngine extends AbstractScriptEngine {
      */
     @PostConstruct
     public void init() {
+        if (!isExpressionCompilerAvailable()) {
+            logger.error("javassist is not available. The ognl script engine cannot evaluate any expression."
+                    + " javassist is normally provided by org.lastaflute:lasta-di in WEB-INF/lib.");
+        }
         expressionCache = new OgnlExpressionCache(expressionCacheSize);
         scriptAuditLogEnabled = ComponentUtil.available() && ComponentUtil.getFessConfig().isScriptAuditLogEnabled()
                 && ComponentUtil.hasComponent("activityHelper");
+    }
+
+    /**
+     * Returns whether javassist, which ognl requires for its expression compiler, is on the classpath.
+     *
+     * @return true when javassist is available
+     */
+    protected static boolean isExpressionCompilerAvailable() {
+        try {
+            Class.forName("javassist.ClassPool");
+            return true;
+        } catch (final Throwable t) {
+            return false;
+        }
     }
 
     /**

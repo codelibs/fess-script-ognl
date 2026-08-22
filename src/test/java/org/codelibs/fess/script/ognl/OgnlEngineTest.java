@@ -1048,4 +1048,10 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         assertEquals(2, logs.size());
         assertEquals("1 / 0|failure:ArithmeticException", logs.get(1));
     }
+
+    @Test
+    public void test_isExpressionCompilerAvailable() {
+        // javassist reaches Fess through org.lastaflute:lasta-di and is required by ognl.
+        assertTrue("javassist must be on the classpath", OgnlEngine.isExpressionCompilerAvailable());
+    }
 }
