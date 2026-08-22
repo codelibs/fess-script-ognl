@@ -997,18 +997,26 @@ public class OgnlEngineTest extends UnitScriptTestCase {
     public void test_expressionCache_concurrentEvaluation() throws Exception {
         ognlEngine.init();
         final int threads = 8;
+        final int taskCount = threads * 50;
         final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
         try {
+            // Every task shares the same expression text so the cache genuinely serves one
+            // shared parse tree, but each task binds a distinct "value" and asserts a
+            // task-specific expected result: a cross-thread bleed of evaluation state would
+            // then surface as a wrong value, not just a thrown exception.
             final java.util.List<java.util.concurrent.Future<Object>> futures = new java.util.ArrayList<>();
-            for (int i = 0; i < threads * 50; i++) {
+            for (int i = 0; i < taskCount; i++) {
+                final int taskIndex = i;
                 futures.add(pool.submit(() -> {
                     final Map<String, Object> params = new HashMap<>();
-                    params.put("value", "abc");
+                    params.put("value", "task" + taskIndex);
                     return ognlEngine.evaluate("value.toUpperCase() + value.length()", params);
                 }));
             }
-            for (final java.util.concurrent.Future<Object> future : futures) {
-                assertEquals("ABC3", future.get());
+            for (int i = 0; i < taskCount; i++) {
+                final String value = "task" + i;
+                final String expected = value.toUpperCase() + value.length();
+                assertEquals(expected, futures.get(i).get(10, java.util.concurrent.TimeUnit.SECONDS));
             }
         } finally {
             pool.shutdownNow();
