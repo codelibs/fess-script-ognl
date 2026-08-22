@@ -44,17 +44,22 @@ public class OgnlSandboxTest extends UnitScriptTestCase {
 
     @Test
     public void test_classResolver_allowsOnlyListedPrefixes() {
-        final FessClassResolver resolver = new FessClassResolver(new String[] { "java.lang.Math", "java.lang.String", "java.util.Date" });
+        final FessClassResolver resolver = new FessClassResolver(
+                new String[] { "java.lang.Math", "java.lang.String", "java.util.Date", "java.time", "java.lang.Thread" });
 
         assertEquals(Math.class, resolveOrNull(resolver, "java.lang.Math"));
         assertEquals(String.class, resolveOrNull(resolver, "String"));
         assertEquals(Math.class, resolveOrNull(resolver, "Math"));
         assertEquals(java.util.Date.class, resolveOrNull(resolver, "java.util.Date"));
+        assertEquals(java.time.LocalDate.class, resolveOrNull(resolver, "java.time.LocalDate"));
+        assertEquals(Thread.class, resolveOrNull(resolver, "java.lang.Thread"));
 
         assertNull("System must not resolve", resolveOrNull(resolver, "java.lang.System"));
         assertNull("Unqualified System must not resolve", resolveOrNull(resolver, "System"));
         assertNull("java.io must not resolve", resolveOrNull(resolver, "java.io.File"));
         assertNull("Runtime must not resolve", resolveOrNull(resolver, "java.lang.Runtime"));
+        assertNull("ThreadGroup must not resolve despite Thread prefix", resolveOrNull(resolver, "java.lang.ThreadGroup"));
+        assertNull("java.timex must not resolve despite java.time prefix", resolveOrNull(resolver, "java.timex.Foo"));
     }
 
     private Class<?> resolveOrNull(final FessClassResolver resolver, final String className) {
