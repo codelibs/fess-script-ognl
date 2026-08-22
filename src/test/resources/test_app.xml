@@ -4,4 +4,11 @@
 <components>
 	<include path="convention.xml" />
 	<include path="lastaflute.xml" />
+	<!-- Loads the production fess_se++.xml so that tests exercise the full
+	     DI registration path: fess_se++.xml declares ognlEngine with postConstruct="register",
+	     which registers it with the factory at container initialization. -->
+	<include path="fess_se++.xml" />
+	<!-- Provides the script engine factory so that tests can assert on registered engines. -->
+	<component name="scriptEngineFactory"
+		class="org.codelibs.fess.script.ScriptEngineFactory" />
 </components>

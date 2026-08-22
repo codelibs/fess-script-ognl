@@ -26,6 +26,7 @@ import java.util.Map;
 import org.codelibs.fess.exception.JobProcessingException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.codelibs.fess.script.ognl.UnitScriptTestCase;
+import org.codelibs.fess.script.ScriptEngine;
 
 public class OgnlEngineTest extends UnitScriptTestCase {
     public OgnlEngine ognlEngine;
@@ -928,5 +929,38 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         public void setCountry(String country) {
             this.country = country;
         }
+    }
+
+    // ========================================
+    // DI Registration Tests
+    // ========================================
+
+    @Test
+    public void test_registerAndLookupByName() {
+        ognlEngine.register();
+
+        final ScriptEngine engine = ComponentUtil.getScriptEngineFactory().getScriptEngine("ognl");
+        assertNotNull(engine);
+
+        final Map<String, Object> params = new HashMap<>();
+        params.put("name", "world");
+        assertEquals("hi world", engine.evaluate("'hi ' + name", params));
+
+        assertNotNull(ComponentUtil.getScriptEngineFactory().getScriptEngine("ognlengine"));
+    }
+
+    @Test
+    public void test_diContainerRegistersOgnlEngineViaXmlPostConstruct() {
+        // The container loads fess_se++.xml which declares ognlEngine with postConstruct="register".
+        // This test verifies that the XML properly instantiates and registers the engine.
+        final ScriptEngine engine = ComponentUtil.getScriptEngineFactory().getScriptEngine("ognl");
+        assertNotNull("Engine should be registered by fess_se++.xml postConstruct", engine);
+
+        final Map<String, Object> params = new HashMap<>();
+        params.put("name", "world");
+        assertEquals("Engine from XML should evaluate expressions", "hi world", engine.evaluate("'hi ' + name", params));
+
+        assertNotNull("Engine should also be registered by lowercased class name",
+                ComponentUtil.getScriptEngineFactory().getScriptEngine("ognlengine"));
     }
 }
