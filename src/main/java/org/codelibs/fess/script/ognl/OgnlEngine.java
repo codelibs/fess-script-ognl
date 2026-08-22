@@ -15,6 +15,7 @@
  */
 package org.codelibs.fess.script.ognl;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -32,6 +33,8 @@ import org.lastaflute.di.core.factory.SingletonLaContainerFactory;
 import org.lastaflute.job.LaJobRuntime;
 
 import jakarta.annotation.PostConstruct;
+import ognl.ClassResolver;
+import ognl.MemberAccess;
 import ognl.Ognl;
 import ognl.OgnlContext;
 
@@ -56,6 +59,36 @@ public class OgnlEngine extends AbstractScriptEngine {
     /** Whether script execution is written to the audit log. Resolved in init(). */
     protected boolean scriptAuditLogEnabled;
 
+    /** Mode name that applies the sandbox. */
+    protected static final String MODE_STRICT = "strict";
+
+    /** Default class allow list applied in strict mode. */
+    protected static final String DEFAULT_ALLOWED_CLASSES = "java.lang.Math,java.lang.String,java.lang.Boolean,"
+            + "java.lang.Integer,java.lang.Long,java.lang.Float,java.lang.Double,java.lang.Number,"
+            + "java.util.Date,java.util.Arrays,java.util.List,java.util.Map,java.util.Set,java.util.Collections,"
+            + "java.math.BigDecimal,java.time," + "org.codelibs.core.lang.StringUtil,org.codelibs.fess.util.DocumentUtil,"
+            + "org.codelibs.fess.taglib.FessFunctions";
+
+    /** Default declaring-class deny list applied in strict mode. */
+    protected static final String DEFAULT_DENIED_PACKAGES = "java.io,java.nio,java.net,java.lang.reflect,"
+            + "java.lang.invoke,java.lang.System,java.lang.Class,java.lang.Runtime,java.lang.ProcessBuilder,"
+            + "java.lang.Process,java.lang.Thread,java.lang.ClassLoader,javax.script,jdk.,sun.,org.lastaflute.di";
+
+    /** Evaluation mode: "compat" (default) or "strict". Configurable via DI. */
+    protected String mode = "compat";
+
+    /** Comma separated class allow list used in strict mode. Configurable via DI. */
+    protected String allowedClasses = DEFAULT_ALLOWED_CLASSES;
+
+    /** Comma separated declaring-class deny list used in strict mode. Configurable via DI. */
+    protected String deniedPackages = DEFAULT_DENIED_PACKAGES;
+
+    private boolean strict;
+
+    private MemberAccess memberAccess;
+
+    private ClassResolver classResolver;
+
     private OgnlExpressionCache expressionCache = new OgnlExpressionCache(1000);
 
     /**
@@ -74,9 +107,32 @@ public class OgnlEngine extends AbstractScriptEngine {
             logger.error("javassist is not available. The ognl script engine cannot evaluate any expression."
                     + " javassist is normally provided by org.lastaflute:lasta-di in WEB-INF/lib.");
         }
+
+        expressionCacheSize = getConfigValueAsInt("script.ognl.cache.size", expressionCacheSize);
+        maxScriptLogLength = getConfigValueAsInt("script.ognl.max.log.length", maxScriptLogLength);
+        expressionMaxLength = getConfigValueAsInt("script.ognl.expression.max.length", expressionMaxLength);
+        mode = getConfigValue("script.ognl.mode", mode);
+        allowedClasses = getConfigValue("script.ognl.allowed.classes", allowedClasses);
+        deniedPackages = getConfigValue("script.ognl.denied.packages", deniedPackages);
+
+        strict = MODE_STRICT.equalsIgnoreCase(mode);
+        if (strict) {
+            memberAccess = new FessMemberAccess(split(deniedPackages));
+            classResolver = new FessClassResolver(split(allowedClasses));
+        } else {
+            memberAccess = null;
+            classResolver = null;
+        }
+
         expressionCache = new OgnlExpressionCache(expressionCacheSize);
+
         scriptAuditLogEnabled = ComponentUtil.available() && ComponentUtil.getFessConfig().isScriptAuditLogEnabled()
                 && ComponentUtil.hasComponent("activityHelper");
+
+        if (logger.isDebugEnabled()) {
+            logger.debug("ognl script engine: mode={}, cacheSize={}, expressionMaxLength={}", mode, expressionCacheSize,
+                    expressionMaxLength);
+        }
     }
 
     /**
@@ -121,6 +177,76 @@ public class OgnlEngine extends AbstractScriptEngine {
     }
 
     /**
+     * Sets the evaluation mode.
+     *
+     * @param mode {@code "compat"} or {@code "strict"}
+     */
+    public void setMode(final String mode) {
+        this.mode = mode;
+    }
+
+    /**
+     * Sets the comma separated class allow list used in strict mode.
+     *
+     * @param allowedClasses the allow list
+     */
+    public void setAllowedClasses(final String allowedClasses) {
+        this.allowedClasses = allowedClasses;
+    }
+
+    /**
+     * Sets the comma separated declaring-class deny list used in strict mode.
+     *
+     * @param deniedPackages the deny list
+     */
+    public void setDeniedPackages(final String deniedPackages) {
+        this.deniedPackages = deniedPackages;
+    }
+
+    /**
+     * Returns whether the sandbox is applied.
+     *
+     * @return true when running in strict mode
+     */
+    protected boolean isStrict() {
+        return strict;
+    }
+
+    /**
+     * Reads a plugin setting from system.properties, falling back to the given default.
+     *
+     * @param key the setting key, without the {@code fess.system.} prefix
+     * @param defaultValue the value used when the setting is unavailable
+     * @return the resolved value
+     */
+    protected String getConfigValue(final String key, final String defaultValue) {
+        try {
+            if (ComponentUtil.available()) {
+                return ComponentUtil.getFessConfig().getSystemProperty(key, defaultValue);
+            }
+        } catch (final Exception e) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Failed to read {}", key, e);
+            }
+        }
+        return defaultValue;
+    }
+
+    private int getConfigValueAsInt(final String key, final int defaultValue) {
+        final String value = getConfigValue(key, Integer.toString(defaultValue));
+        try {
+            return Integer.parseInt(value.trim());
+        } catch (final NumberFormatException e) {
+            logger.warn("Invalid value for {}: {}. Using {}.", key, value, defaultValue);
+            return defaultValue;
+        }
+    }
+
+    private static String[] split(final String value) {
+        return Arrays.stream(value.split(",")).map(String::trim).filter(s -> !s.isEmpty()).toArray(String[]::new);
+    }
+
+    /**
      * Returns the parsed-expression cache.
      *
      * @return the parsed-expression cache
@@ -153,6 +279,9 @@ public class OgnlEngine extends AbstractScriptEngine {
      * @return the evaluation context
      */
     protected OgnlContext createContext(final Map<String, Object> bindingMap) {
+        if (strict) {
+            return Ognl.createDefaultContext(bindingMap, memberAccess, classResolver, null).withValues(bindingMap);
+        }
         return Ognl.createDefaultContext(bindingMap).withValues(bindingMap);
     }
 
@@ -167,7 +296,9 @@ public class OgnlEngine extends AbstractScriptEngine {
         }
         final Map<String, Object> safeParamMap = paramMap != null ? paramMap : Collections.emptyMap();
         final Map<String, Object> bindingMap = new HashMap<>(safeParamMap);
-        bindingMap.put("container", SingletonLaContainerFactory.getContainer());
+        if (!strict) {
+            bindingMap.put("container", SingletonLaContainerFactory.getContainer());
+        }
         CachedExpression expression = null;
         try {
             expression = expressionCache.get(template, Ognl::parseExpression);
