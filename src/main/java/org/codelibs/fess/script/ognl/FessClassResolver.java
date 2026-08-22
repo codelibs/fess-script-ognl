@@ -29,7 +29,13 @@ public class FessClassResolver extends DefaultClassResolver {
     private final String[] allowedPrefixes;
 
     /**
-     * Creates a resolver that accepts only the given class names and their nested classes.
+     * Creates a resolver that accepts only the given class names and dot-separated sub-paths.
+     * <p>
+     * For a prefix like {@code java.lang.Math}, exactly that class is allowed. For a prefix like
+     * {@code java.time} (a package), any class under it (e.g., {@code java.time.LocalDate},
+     * {@code java.time.chrono.Chronology}) is allowed. Note that inner classes (e.g.,
+     * {@code java.util.Map$Entry}) use binary names with {@code $}, not {@code .}, and are not
+     * admitted by this check.
      *
      * @param allowedPrefixes fully qualified class or package name prefixes to allow
      */

@@ -45,7 +45,7 @@ public class OgnlSandboxTest extends UnitScriptTestCase {
     @Test
     public void test_classResolver_allowsOnlyListedPrefixes() {
         final FessClassResolver resolver = new FessClassResolver(
-                new String[] { "java.lang.Math", "java.lang.String", "java.util.Date", "java.time", "java.lang.Thread" });
+                new String[] { "java.lang.Math", "java.lang.String", "java.util.Date", "java.time", "java.lang.Thread", "java.lang.ref" });
 
         assertEquals(Math.class, resolveOrNull(resolver, "java.lang.Math"));
         assertEquals(String.class, resolveOrNull(resolver, "String"));
@@ -53,13 +53,14 @@ public class OgnlSandboxTest extends UnitScriptTestCase {
         assertEquals(java.util.Date.class, resolveOrNull(resolver, "java.util.Date"));
         assertEquals(java.time.LocalDate.class, resolveOrNull(resolver, "java.time.LocalDate"));
         assertEquals(Thread.class, resolveOrNull(resolver, "java.lang.Thread"));
+        assertEquals(java.lang.ref.WeakReference.class, resolveOrNull(resolver, "java.lang.ref.WeakReference"));
 
         assertNull("System must not resolve", resolveOrNull(resolver, "java.lang.System"));
         assertNull("Unqualified System must not resolve", resolveOrNull(resolver, "System"));
         assertNull("java.io must not resolve", resolveOrNull(resolver, "java.io.File"));
         assertNull("Runtime must not resolve", resolveOrNull(resolver, "java.lang.Runtime"));
         assertNull("ThreadGroup must not resolve despite Thread prefix", resolveOrNull(resolver, "java.lang.ThreadGroup"));
-        assertNull("java.timex must not resolve despite java.time prefix", resolveOrNull(resolver, "java.timex.Foo"));
+        assertNull("reflect.Method must not resolve despite ref prefix", resolveOrNull(resolver, "java.lang.reflect.Method"));
     }
 
     private Class<?> resolveOrNull(final FessClassResolver resolver, final String className) {
