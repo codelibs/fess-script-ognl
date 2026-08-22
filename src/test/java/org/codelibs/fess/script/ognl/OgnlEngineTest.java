@@ -959,4 +959,13 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         assertNotNull("Engine should also be registered by lowercased class name",
                 ComponentUtil.getScriptEngineFactory().getScriptEngine("ognlengine"));
     }
+
+    @Test
+    public void test_abbreviateScript() {
+        ognlEngine.setMaxScriptLogLength(10);
+        assertEquals("-", ognlEngine.abbreviateScript(null));
+        assertEquals("123456789", ognlEngine.abbreviateScript("123456789"));
+        assertEquals("1234567890", ognlEngine.abbreviateScript("1234567890"));
+        assertEquals("1234567...", ognlEngine.abbreviateScript("12345678901"));
+    }
 }

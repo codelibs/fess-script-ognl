@@ -37,11 +37,39 @@ import ognl.Ognl;
 public class OgnlEngine extends AbstractScriptEngine {
     private static final Logger logger = LogManager.getLogger(OgnlEngine.class);
 
+    /** Maximum length of script text included in warning log messages. Configurable via DI. */
+    protected int maxScriptLogLength = 200;
+
     /**
      * Creates a new {@link OgnlEngine}.
      */
     public OgnlEngine() {
         super();
+    }
+
+    /**
+     * Sets the maximum length of script text included in log messages.
+     *
+     * @param maxScriptLogLength the maximum length
+     */
+    public void setMaxScriptLogLength(final int maxScriptLogLength) {
+        this.maxScriptLogLength = maxScriptLogLength;
+    }
+
+    /**
+     * Truncates the given script so that it is safe to write to a log.
+     *
+     * @param script the script text, may be null
+     * @return the truncated script, or {@code "-"} when the script is null
+     */
+    protected String abbreviateScript(final String script) {
+        if (script == null) {
+            return "-";
+        }
+        if (script.length() <= maxScriptLogLength) {
+            return script;
+        }
+        return script.substring(0, maxScriptLogLength - 3) + "...";
     }
 
     @Override
@@ -58,7 +86,7 @@ public class OgnlEngine extends AbstractScriptEngine {
         } catch (final JobProcessingException e) {
             throw e;
         } catch (final Exception e) {
-            logger.warn("Failed to evaluate ognl script: {} => {}", template, safeParamMap, e);
+            logger.warn("Failed to evaluate ognl script: {} => {}", abbreviateScript(template), safeParamMap.keySet(), e);
             return null;
         }
     }
