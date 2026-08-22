@@ -24,8 +24,10 @@ import org.apache.logging.log4j.Logger;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.exception.JobProcessingException;
 import org.codelibs.fess.script.AbstractScriptEngine;
+import org.codelibs.fess.script.ognl.OgnlExpressionCache.CachedExpression;
 import org.lastaflute.di.core.factory.SingletonLaContainerFactory;
 
+import jakarta.annotation.PostConstruct;
 import ognl.Ognl;
 
 /**
@@ -40,11 +42,24 @@ public class OgnlEngine extends AbstractScriptEngine {
     /** Maximum length of script text included in warning log messages. Configurable via DI. */
     protected int maxScriptLogLength = 200;
 
+    /** Maximum number of parsed expressions to cache. Configurable via DI. */
+    protected int expressionCacheSize = 1000;
+
+    private OgnlExpressionCache expressionCache = new OgnlExpressionCache(1000);
+
     /**
      * Creates a new {@link OgnlEngine}.
      */
     public OgnlEngine() {
         super();
+    }
+
+    /**
+     * Rebuilds internal state after DI property injection.
+     */
+    @PostConstruct
+    public void init() {
+        expressionCache = new OgnlExpressionCache(expressionCacheSize);
     }
 
     /**
@@ -54,6 +69,24 @@ public class OgnlEngine extends AbstractScriptEngine {
      */
     public void setMaxScriptLogLength(final int maxScriptLogLength) {
         this.maxScriptLogLength = maxScriptLogLength;
+    }
+
+    /**
+     * Sets the maximum number of parsed expressions to cache.
+     *
+     * @param expressionCacheSize the maximum number of cached expressions
+     */
+    public void setExpressionCacheSize(final int expressionCacheSize) {
+        this.expressionCacheSize = expressionCacheSize;
+    }
+
+    /**
+     * Returns the parsed-expression cache.
+     *
+     * @return the parsed-expression cache
+     */
+    protected OgnlExpressionCache getExpressionCache() {
+        return expressionCache;
     }
 
     /**
@@ -81,8 +114,8 @@ public class OgnlEngine extends AbstractScriptEngine {
         final Map<String, Object> bindingMap = new HashMap<>(safeParamMap);
         bindingMap.put("container", SingletonLaContainerFactory.getContainer());
         try {
-            final Object exp = Ognl.parseExpression(template);
-            return Ognl.getValue(exp, bindingMap);
+            final CachedExpression expression = expressionCache.get(template, Ognl::parseExpression);
+            return Ognl.getValue(expression.getNode(), bindingMap);
         } catch (final JobProcessingException e) {
             throw e;
         } catch (final Exception e) {

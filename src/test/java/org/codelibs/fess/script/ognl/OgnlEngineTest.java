@@ -968,4 +968,50 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         assertEquals("1234567890", ognlEngine.abbreviateScript("1234567890"));
         assertEquals("1234567...", ognlEngine.abbreviateScript("12345678901"));
     }
+
+    // ========================================
+    // Expression Cache Tests
+    // ========================================
+
+    @Test
+    public void test_expressionCache_reusesParsedTree() {
+        ognlEngine.setExpressionCacheSize(2);
+        ognlEngine.init();
+
+        final Map<String, Object> params = new HashMap<>();
+        params.put("a", 1);
+        params.put("b", 2);
+
+        assertEquals(1, ognlEngine.evaluate("a", params));
+        assertEquals(1, ognlEngine.evaluate("a", params));
+        assertEquals(1L, ognlEngine.getExpressionCache().size());
+
+        assertEquals(2, ognlEngine.evaluate("b", params));
+        assertEquals(2L, ognlEngine.getExpressionCache().size());
+
+        assertEquals(3, ognlEngine.evaluate("a + b", params));
+        assertEquals(2L, ognlEngine.getExpressionCache().size());
+    }
+
+    @Test
+    public void test_expressionCache_concurrentEvaluation() throws Exception {
+        ognlEngine.init();
+        final int threads = 8;
+        final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+        try {
+            final java.util.List<java.util.concurrent.Future<Object>> futures = new java.util.ArrayList<>();
+            for (int i = 0; i < threads * 50; i++) {
+                futures.add(pool.submit(() -> {
+                    final Map<String, Object> params = new HashMap<>();
+                    params.put("value", "abc");
+                    return ognlEngine.evaluate("value.toUpperCase() + value.length()", params);
+                }));
+            }
+            for (final java.util.concurrent.Future<Object> future : futures) {
+                assertEquals("ABC3", future.get());
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
 }
