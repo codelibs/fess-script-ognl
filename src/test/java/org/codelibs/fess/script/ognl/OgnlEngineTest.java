@@ -1022,4 +1022,30 @@ public class OgnlEngineTest extends UnitScriptTestCase {
             pool.shutdownNow();
         }
     }
+
+    @Test
+    public void test_auditLog_oncePerExpression() {
+        final java.util.List<String> logs = new java.util.ArrayList<>();
+        final OgnlEngine engine = new OgnlEngine() {
+            @Override
+            protected void logScriptExecution(final String script, final String result) {
+                logs.add(script + "|" + result);
+            }
+        };
+        engine.init();
+
+        final Map<String, Object> params = new HashMap<>();
+        params.put("value", "a");
+
+        engine.evaluate("value", params);
+        engine.evaluate("value", params);
+        engine.evaluate("value", params);
+        assertEquals(1, logs.size());
+        assertEquals("value|success", logs.get(0));
+
+        engine.evaluate("1 / 0", params);
+        engine.evaluate("1 / 0", params);
+        assertEquals(2, logs.size());
+        assertEquals("1 / 0|failure:ArithmeticException", logs.get(1));
+    }
 }

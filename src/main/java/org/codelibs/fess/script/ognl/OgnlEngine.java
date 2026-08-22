@@ -22,10 +22,14 @@ import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codelibs.core.lang.StringUtil;
+import org.codelibs.fess.Constants;
 import org.codelibs.fess.exception.JobProcessingException;
+import org.codelibs.fess.opensearch.config.exentity.ScheduledJob;
 import org.codelibs.fess.script.AbstractScriptEngine;
 import org.codelibs.fess.script.ognl.OgnlExpressionCache.CachedExpression;
+import org.codelibs.fess.util.ComponentUtil;
 import org.lastaflute.di.core.factory.SingletonLaContainerFactory;
+import org.lastaflute.job.LaJobRuntime;
 
 import jakarta.annotation.PostConstruct;
 import ognl.Ognl;
@@ -45,6 +49,9 @@ public class OgnlEngine extends AbstractScriptEngine {
     /** Maximum number of parsed expressions to cache. Configurable via DI. */
     protected int expressionCacheSize = 1000;
 
+    /** Whether script execution is written to the audit log. Resolved in init(). */
+    protected boolean scriptAuditLogEnabled;
+
     private OgnlExpressionCache expressionCache = new OgnlExpressionCache(1000);
 
     /**
@@ -60,6 +67,8 @@ public class OgnlEngine extends AbstractScriptEngine {
     @PostConstruct
     public void init() {
         expressionCache = new OgnlExpressionCache(expressionCacheSize);
+        scriptAuditLogEnabled = ComponentUtil.available() && ComponentUtil.getFessConfig().isScriptAuditLogEnabled()
+                && ComponentUtil.hasComponent("activityHelper");
     }
 
     /**
@@ -113,12 +122,19 @@ public class OgnlEngine extends AbstractScriptEngine {
         final Map<String, Object> safeParamMap = paramMap != null ? paramMap : Collections.emptyMap();
         final Map<String, Object> bindingMap = new HashMap<>(safeParamMap);
         bindingMap.put("container", SingletonLaContainerFactory.getContainer());
+        CachedExpression expression = null;
         try {
-            final CachedExpression expression = expressionCache.get(template, Ognl::parseExpression);
-            return Ognl.getValue(expression.getNode(), bindingMap);
+            expression = expressionCache.get(template, Ognl::parseExpression);
+            final Object value = Ognl.getValue(expression.getNode(), bindingMap);
+            if (expression.markSuccessAudited()) {
+                logScriptExecution(template, "success");
+            }
+            return value;
         } catch (final JobProcessingException e) {
+            auditFailure(expression, template, e);
             throw e;
         } catch (final Exception e) {
+            auditFailure(expression, template, e);
             logger.warn("Failed to evaluate ognl script: {} => {}", abbreviateScript(template), safeParamMap.keySet(), e);
             return null;
         }
@@ -127,6 +143,76 @@ public class OgnlEngine extends AbstractScriptEngine {
     @Override
     protected String getName() {
         return "ognl";
+    }
+
+    /**
+     * Returns the scheduled job that is running on the current thread, if any.
+     *
+     * @return the running scheduled job, or null
+     */
+    protected ScheduledJob getCurrentScheduledJob() {
+        try {
+            if (!ComponentUtil.hasComponent("jobHelper")) {
+                return null;
+            }
+            final LaJobRuntime runtime = ComponentUtil.getJobHelper().getJobRuntime();
+            if (runtime != null) {
+                final Object job = runtime.getParameterMap().get(Constants.SCHEDULED_JOB);
+                if (job instanceof ScheduledJob) {
+                    return (ScheduledJob) job;
+                }
+            }
+        } catch (final Exception e) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Failed to get scheduled job from thread local", e);
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Writes one audit log entry for a script execution.
+     * <p>
+     * Unlike the Groovy engine, this is called only on the first evaluation of a given
+     * expression, because OGNL expressions are evaluated once per document per field.
+     *
+     * @param script the script content that was executed
+     * @param result the execution result, such as {@code "success"} or {@code "failure:ArithmeticException"}
+     */
+    protected void logScriptExecution(final String script, final String result) {
+        if (!scriptAuditLogEnabled) {
+            return;
+        }
+        try {
+            String source = "unknown";
+            String user = "system";
+
+            final ScheduledJob job = getCurrentScheduledJob();
+            if (job != null) {
+                source = "scheduler:" + job.getName();
+                if (job.getCreatedBy() != null) {
+                    user = job.getCreatedBy();
+                }
+            } else {
+                try {
+                    user = ComponentUtil.getSystemHelper().getUsername();
+                } catch (final Exception e) {
+                    // Ignore - background job context
+                }
+            }
+
+            ComponentUtil.getActivityHelper().scriptExecution(getName(), script, source, user, result);
+        } catch (final Exception e) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Failed to log script execution", e);
+            }
+        }
+    }
+
+    private void auditFailure(final CachedExpression expression, final String template, final Exception e) {
+        if (expression != null && expression.markFailureAudited()) {
+            logScriptExecution(template, "failure:" + e.getClass().getSimpleName());
+        }
     }
 
 }
