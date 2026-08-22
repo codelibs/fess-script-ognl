@@ -41,4 +41,27 @@ public class OgnlSandboxTest extends UnitScriptTestCase {
         final Method clone = Object.class.getDeclaredMethod("clone");
         assertFalse("Non-public members must be denied", memberAccess.isAccessible(null, null, clone, null));
     }
+
+    @Test
+    public void test_classResolver_allowsOnlyListedPrefixes() {
+        final FessClassResolver resolver = new FessClassResolver(new String[] { "java.lang.Math", "java.lang.String", "java.util.Date" });
+
+        assertEquals(Math.class, resolveOrNull(resolver, "java.lang.Math"));
+        assertEquals(String.class, resolveOrNull(resolver, "String"));
+        assertEquals(Math.class, resolveOrNull(resolver, "Math"));
+        assertEquals(java.util.Date.class, resolveOrNull(resolver, "java.util.Date"));
+
+        assertNull("System must not resolve", resolveOrNull(resolver, "java.lang.System"));
+        assertNull("Unqualified System must not resolve", resolveOrNull(resolver, "System"));
+        assertNull("java.io must not resolve", resolveOrNull(resolver, "java.io.File"));
+        assertNull("Runtime must not resolve", resolveOrNull(resolver, "java.lang.Runtime"));
+    }
+
+    private Class<?> resolveOrNull(final FessClassResolver resolver, final String className) {
+        try {
+            return resolver.classForName(className, null);
+        } catch (final ClassNotFoundException e) {
+            return null;
+        }
+    }
 }
