@@ -71,13 +71,6 @@ public class OgnlExpressionCache {
     }
 
     /**
-     * Removes every cached expression.
-     */
-    public void clear() {
-        cache.invalidateAll();
-    }
-
-    /**
      * Parses an OGNL expression.
      */
     @FunctionalInterface
