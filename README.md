@@ -3,8 +3,8 @@
 [![Java CI with Maven](https://github.com/codelibs/fess-script-ognl/actions/workflows/maven.yml/badge.svg)](https://github.com/codelibs/fess-script-ognl/actions/workflows/maven.yml)
 
 A script engine plugin for [Fess](https://fess.codelibs.org/), the open-source enterprise search
-server, that evaluates [OGNL](https://commons.apache.org/proper/commons-ognl/) (Object-Graph
-Navigation Language) expressions.
+server, that evaluates [OGNL](https://github.com/orphan-oss/ognl) (Object-Graph Navigation
+Language) expressions.
 
 ## Overview
 
@@ -28,7 +28,7 @@ Fess evaluates scripts in five places. OGNL can be selected, per place, as follo
 | --- | --- | --- |
 | Data store crawling | Yes | Add the handler parameter `script_type=ognl` to the data crawling config |
 | Web/File crawling field scripts | Yes | Add the config parameter `config.script.type=ognl` to the crawling config |
-| Document boost (Boost Document Rule) | Yes, but globally only | Set the system property `crawler.default.script=ognl` — this applies to *every* boost rule, not per rule |
+| Document boost (Boost Document Rule) | Yes, but globally only | Set `crawler.default.script=ognl` in Fess's own `fess_config.properties` (not this plugin's `system.properties` — see [Configuration](#configuration)) — this applies to *every* boost rule, not per rule |
 | Path mapping | **No** | Path mapping's `groovy:` replacement prefix always evaluates with the Groovy engine, regardless of what other engines are installed |
 | Scheduler jobs | **No** | See below |
 
@@ -53,7 +53,9 @@ statement syntax that OGNL has no grammar for.
 
 ### Download
 
-Download the plugin JAR from [Maven Central](https://repo1.maven.org/maven2/org/codelibs/fess/fess-script-ognl/).
+Fess plugins are distributed through the CodeLibs Maven repository, not Maven Central.
+Download the plugin JAR from
+[maven.codelibs.org](https://maven.codelibs.org/org/codelibs/fess/fess-script-ognl/).
 
 ### Plugin Installation
 
