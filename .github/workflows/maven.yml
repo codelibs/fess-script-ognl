@@ -8,10 +8,9 @@ on:
     branches:
     - main
     - "*.x"
+  # No branch filter: a pull request targeting a feature branch (a stacked pull
+  # request) must build too, otherwise only the bottom of the stack is verified.
   pull_request:
-    branches:
-    - main
-    - "*.x"
 
 jobs:
   build:
