@@ -16,10 +16,9 @@ on:
     branches:
     - main
     - "*.x"
+  # No branch filter: a pull request targeting a feature branch (a stacked pull
+  # request) must be analyzed too, otherwise only the bottom of the stack is.
   pull_request:
-    branches:
-    - main
-    - "*.x"
   schedule:
     - cron: '5 1 * * 3'
 
