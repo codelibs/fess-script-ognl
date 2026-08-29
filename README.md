@@ -9,40 +9,42 @@ Language) expressions.
 ## Overview
 
 Fess lets an administrator enter a small script or expression in several places — computing a
-field value during crawling, deciding a document boost, or running a scheduled job. Out of the
-box, Fess evaluates these with a full Groovy engine. This plugin adds `ognl` as an alternative
-engine for the places that just need a **short expression**, not a script.
+field value during crawling, deciding a document boost, or running a scheduled job. Fess 15.9
+evaluates these with a JavaScript engine by default, and ships Groovy as a bundled plugin. This
+plugin adds `ognl` as a further alternative for the places that just need a **short expression**,
+not a script.
 
 OGNL has no statements, no control flow, and no `return`; an OGNL expression is a single value
 expression such as `title + " - " + siteName` or `content.length() > 0`. That constraint is the
 point: an OGNL expression is easy to read at a glance, cannot loop or branch, and (in `strict`
-mode) can be bounded to a known set of classes and members. Use it for field-mapping and boost
-expressions. Keep using Groovy for scheduler jobs and for anything that needs more than one
-expression — Groovy is, and remains, the right tool for those.
+mode) can be bounded to a known set of classes and members. Use it for field-mapping, boost and
+path-mapping expressions. For a scheduled job — or anything else that needs statements, a loop or
+a `return` — use one of the scripting engines instead.
 
 ## Where OGNL Can Be Used
 
-Fess evaluates scripts in five places. OGNL can be selected, per place, as follows:
+Fess evaluates scripts in five places, and `ognl` can be selected in all five:
 
-| Place | Selectable? | How |
-| --- | --- | --- |
-| Data store crawling | Yes | Add the handler parameter `script_type=ognl` to the data crawling config |
-| Web/File crawling field scripts | Yes | Add the config parameter `config.script.type=ognl` to the crawling config |
-| Document boost (Boost Document Rule) | Yes, but globally only | Set `crawler.default.script=ognl` in Fess's own `fess_config.properties` (not this plugin's `system.properties` — see [Configuration](#configuration)) — this applies to *every* boost rule, not per rule |
-| Path mapping | **No** | Path mapping's `groovy:` replacement prefix always evaluates with the Groovy engine, regardless of what other engines are installed |
-| Scheduler jobs | **No** | See below |
+| Place | How |
+| --- | --- |
+| Data store crawling | Add the handler parameter `script_type=ognl` to the data crawling config |
+| Web/File crawling field scripts | Add the config parameter `config.script.type=ognl` to the crawling config, and write the field templates as `field.script.<field>=<expression>` |
+| Document boost (Boost Document Rule) | Set the rule's own **Script Type** to `ognl`. This is per rule — each boost rule chooses its own engine |
+| Path mapping | Prefix the **Replacement** with `ognl:`. The expression's result becomes the whole replacement URL; the original URL and the regex `Matcher` are bound as `#url` and `#matcher` |
+| Scheduler jobs | Set the job's **Script Type** to `ognl`. Possible, but rarely what you want — see below |
 
-### Scheduler jobs cannot use OGNL
+### Scheduler jobs: possible, but usually the wrong tool
 
-The scheduler job edit screen has a free-text "Script Type" field, and Fess does not validate its
-contents — you can type `ognl` and save it. **Do not.** The job runner does not actually read that
-field when it executes the job; it always evaluates the job's script with the Groovy engine. A job
-saved with Script Type `ognl` runs — silently, without error — as if it were Groovy, and the OGNL
-engine is never invoked.
+A scheduled job whose Script Type is `ognl` really is evaluated by this engine, and its result is
+written to the job log. But a scheduled job is normally a *procedure*, and OGNL has no statements,
+no control flow and no `return`. Every job Fess ships (Default Crawler, Suggest Indexer, Log
+Purger, Thumbnail Generator, and the rest) is written against an engine that has those; none of
+them can be rewritten as a single OGNL expression.
 
-This would fail loudly anyway: every job Fess ships (Default Crawler, Suggest Indexer, Log
-Purger, Thumbnail Generator, and the rest) has a script that begins with `return`, which is Java
-statement syntax that OGNL has no grammar for.
+> **Note for readers of older documentation.** Before Fess 15.9, the scheduler ignored the Script
+> Type field and always used Groovy, and path mapping was tied to the Groovy engine. Both are
+> fixed in 15.9: the scheduler honours the field, and path mapping resolves whatever engine name
+> precedes the colon.
 
 ## Installation
 
@@ -169,11 +171,18 @@ Watch for:
 ## Audit Logging
 
 When Fess's audit log is enabled (`script.audit.log.enabled`, on by default), script execution is
-recorded. The Groovy engine logs every evaluation. This engine does not: it logs the **first**
+recorded. Other engines log every evaluation. This engine does not: it logs the **first**
 successful evaluation and the **first** failed evaluation of each distinct expression text, and
-stays silent on repeats of the same text. This is intentional — a data store or field-mapping
-expression evaluates once per document per field, so logging every evaluation would flood the
-audit log with repeats of the same expression text and add nothing.
+stays silent on repeats of the same text. This is intentional — an expression that runs once per
+document per field would otherwise flood the audit log with repeats of the same text and add
+nothing.
+
+> **Only the web application process is audited.** Audit records come from Fess's
+> `activityHelper`, which is a web application component; the crawler process has neither that
+> component nor an audit appender. So a scheduled job with Script Type `ognl` is recorded, while
+> data store, field-mapping and boost expressions — which all run inside the crawler process —
+> produce **no audit records at all**. Do not treat an empty audit log as evidence that a crawl's
+> expressions did not run.
 
 "Failed evaluation" here means an expression that parsed successfully but failed while it ran
 (for example, `1 / 0`). An expression that fails to **parse** is not audited at all, at any point:
