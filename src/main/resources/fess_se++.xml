@@ -5,6 +5,7 @@
 	<component name="ognlEngine"
 		class="org.codelibs.fess.script.ognl.OgnlEngine">
 		<!--
+		<property name="mode">"compat"</property>
 		<property name="expressionCacheSize">1000</property>
 		<property name="maxScriptLogLength">200</property>
 		<property name="expressionMaxLength">4000</property>
