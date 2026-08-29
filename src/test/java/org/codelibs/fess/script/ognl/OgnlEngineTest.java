@@ -927,6 +927,28 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         }
     }
 
+    @Test
+    public void test_evaluate_contextVariableSyntax() {
+        final Map<String, Object> params = new HashMap<>();
+        params.put("value", "Hello");
+        params.put("count", 3);
+
+        // Root access (the historical behaviour) keeps working.
+        assertEquals("Hello", ognlEngine.evaluate("value", params));
+        assertEquals("HELLO", ognlEngine.evaluate("value.toUpperCase()", params));
+
+        // The #var syntax that OGNL users expect now resolves to the same values.
+        assertEquals("Hello", ognlEngine.evaluate("#value", params));
+        assertEquals(5, ognlEngine.evaluate("#value.length()", params));
+        assertEquals("Hello3", ognlEngine.evaluate("#value + #count", params));
+
+        // #root stays available.
+        assertEquals("Hello", ognlEngine.evaluate("#root.value", params));
+
+        // Unknown names still evaluate to null rather than throwing.
+        assertNull(ognlEngine.evaluate("#nosuch", params));
+    }
+
     // ========================================
     // DI Registration Tests
     // ========================================
@@ -1053,5 +1075,20 @@ public class OgnlEngineTest extends UnitScriptTestCase {
     public void test_isExpressionCompilerAvailable() {
         // javassist reaches Fess through org.lastaflute:lasta-di and is required by ognl.
         assertTrue("javassist must be on the classpath", OgnlEngine.isExpressionCompilerAvailable());
+    }
+
+    @Test
+    public void test_evaluate_expressionMaxLength() {
+        ognlEngine.setExpressionMaxLength(20);
+        final Map<String, Object> params = new HashMap<>();
+        params.put("value", "x");
+
+        assertEquals("x", ognlEngine.evaluate("value", params));
+
+        final StringBuilder buf = new StringBuilder("value");
+        while (buf.length() <= 20) {
+            buf.append(" + value");
+        }
+        assertNull(ognlEngine.evaluate(buf.toString(), params));
     }
 }
