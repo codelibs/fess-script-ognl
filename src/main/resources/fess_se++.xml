@@ -4,6 +4,11 @@
 <components>
 	<component name="ognlEngine"
 		class="org.codelibs.fess.script.ognl.OgnlEngine">
+		<!--
+		<property name="expressionCacheSize">1000</property>
+		<property name="maxScriptLogLength">200</property>
+		-->
+		<postConstruct name="init"></postConstruct>
 		<postConstruct name="register"></postConstruct>
 	</component>
 </components>

@@ -26,6 +26,7 @@ import java.util.Map;
 import org.codelibs.fess.exception.JobProcessingException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.codelibs.fess.script.ognl.UnitScriptTestCase;
+import org.codelibs.fess.script.ScriptEngine;
 
 public class OgnlEngineTest extends UnitScriptTestCase {
     public OgnlEngine ognlEngine;
@@ -103,13 +104,9 @@ public class OgnlEngineTest extends UnitScriptTestCase {
 
     @Test
     public void test_evaluate_nullParamMap() {
-        // Should not throw exception with null paramMap
-        try {
-            ognlEngine.evaluate("123", null);
-            fail("Should throw NullPointerException");
-        } catch (NullPointerException e) {
-            // Expected behavior - the constructor new HashMap<>(paramMap) will throw NPE
-        }
+        // Mirrors GroovyEngine: a null paramMap is treated as an empty map.
+        assertEquals(123, ognlEngine.evaluate("123", null));
+        assertNull(ognlEngine.evaluate("nosuchvariable", null));
     }
 
     @Test
@@ -928,5 +925,133 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         public void setCountry(String country) {
             this.country = country;
         }
+    }
+
+    // ========================================
+    // DI Registration Tests
+    // ========================================
+
+    @Test
+    public void test_registerAndLookupByName() {
+        ognlEngine.register();
+
+        final ScriptEngine engine = ComponentUtil.getScriptEngineFactory().getScriptEngine("ognl");
+        assertNotNull(engine);
+
+        final Map<String, Object> params = new HashMap<>();
+        params.put("name", "world");
+        assertEquals("hi world", engine.evaluate("'hi ' + name", params));
+
+        assertNotNull(ComponentUtil.getScriptEngineFactory().getScriptEngine("ognlengine"));
+    }
+
+    @Test
+    public void test_diContainerRegistersOgnlEngineViaXmlPostConstruct() {
+        // The container loads fess_se++.xml which declares ognlEngine with postConstruct="register".
+        // This test verifies that the XML properly instantiates and registers the engine.
+        final ScriptEngine engine = ComponentUtil.getScriptEngineFactory().getScriptEngine("ognl");
+        assertNotNull("Engine should be registered by fess_se++.xml postConstruct", engine);
+
+        final Map<String, Object> params = new HashMap<>();
+        params.put("name", "world");
+        assertEquals("Engine from XML should evaluate expressions", "hi world", engine.evaluate("'hi ' + name", params));
+
+        assertNotNull("Engine should also be registered by lowercased class name",
+                ComponentUtil.getScriptEngineFactory().getScriptEngine("ognlengine"));
+    }
+
+    @Test
+    public void test_abbreviateScript() {
+        ognlEngine.setMaxScriptLogLength(10);
+        assertEquals("-", ognlEngine.abbreviateScript(null));
+        assertEquals("123456789", ognlEngine.abbreviateScript("123456789"));
+        assertEquals("1234567890", ognlEngine.abbreviateScript("1234567890"));
+        assertEquals("1234567...", ognlEngine.abbreviateScript("12345678901"));
+    }
+
+    // ========================================
+    // Expression Cache Tests
+    // ========================================
+
+    @Test
+    public void test_expressionCache_reusesParsedTree() {
+        ognlEngine.setExpressionCacheSize(2);
+        ognlEngine.init();
+
+        final Map<String, Object> params = new HashMap<>();
+        params.put("a", 1);
+        params.put("b", 2);
+
+        assertEquals(1, ognlEngine.evaluate("a", params));
+        assertEquals(1, ognlEngine.evaluate("a", params));
+        assertEquals(1L, ognlEngine.getExpressionCache().size());
+
+        assertEquals(2, ognlEngine.evaluate("b", params));
+        assertEquals(2L, ognlEngine.getExpressionCache().size());
+
+        assertEquals(3, ognlEngine.evaluate("a + b", params));
+        assertEquals(2L, ognlEngine.getExpressionCache().size());
+    }
+
+    @Test
+    public void test_expressionCache_concurrentEvaluation() throws Exception {
+        ognlEngine.init();
+        final int threads = 8;
+        final int taskCount = threads * 50;
+        final java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threads);
+        try {
+            // Every task shares the same expression text so the cache genuinely serves one
+            // shared parse tree, but each task binds a distinct "value" and asserts a
+            // task-specific expected result: a cross-thread bleed of evaluation state would
+            // then surface as a wrong value, not just a thrown exception.
+            final java.util.List<java.util.concurrent.Future<Object>> futures = new java.util.ArrayList<>();
+            for (int i = 0; i < taskCount; i++) {
+                final int taskIndex = i;
+                futures.add(pool.submit(() -> {
+                    final Map<String, Object> params = new HashMap<>();
+                    params.put("value", "task" + taskIndex);
+                    return ognlEngine.evaluate("value.toUpperCase() + value.length()", params);
+                }));
+            }
+            for (int i = 0; i < taskCount; i++) {
+                final String value = "task" + i;
+                final String expected = value.toUpperCase() + value.length();
+                assertEquals(expected, futures.get(i).get(10, java.util.concurrent.TimeUnit.SECONDS));
+            }
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    public void test_auditLog_oncePerExpression() {
+        final java.util.List<String> logs = new java.util.ArrayList<>();
+        final OgnlEngine engine = new OgnlEngine() {
+            @Override
+            protected void logScriptExecution(final String script, final String result) {
+                logs.add(script + "|" + result);
+            }
+        };
+        engine.init();
+
+        final Map<String, Object> params = new HashMap<>();
+        params.put("value", "a");
+
+        engine.evaluate("value", params);
+        engine.evaluate("value", params);
+        engine.evaluate("value", params);
+        assertEquals(1, logs.size());
+        assertEquals("value|success", logs.get(0));
+
+        engine.evaluate("1 / 0", params);
+        engine.evaluate("1 / 0", params);
+        assertEquals(2, logs.size());
+        assertEquals("1 / 0|failure:ArithmeticException", logs.get(1));
+    }
+
+    @Test
+    public void test_isExpressionCompilerAvailable() {
+        // javassist reaches Fess through org.lastaflute:lasta-di and is required by ognl.
+        assertTrue("javassist must be on the classpath", OgnlEngine.isExpressionCompilerAvailable());
     }
 }
