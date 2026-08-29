@@ -117,9 +117,9 @@ public class OgnlEngine extends AbstractScriptEngine {
                     + " javassist is normally provided by org.lastaflute:lasta-di in WEB-INF/lib.");
         }
 
-        expressionCacheSize = getConfigValueAsInt("script.ognl.cache.size", expressionCacheSize, 0);
+        expressionCacheSize = getConfigValueAsInt("script.ognl.cache.size", expressionCacheSize, 1);
         maxScriptLogLength = getConfigValueAsInt("script.ognl.max.log.length", maxScriptLogLength, 3);
-        expressionMaxLength = getConfigValueAsInt("script.ognl.expression.max.length", expressionMaxLength, 0);
+        expressionMaxLength = getConfigValueAsInt("script.ognl.expression.max.length", expressionMaxLength, 1);
         mode = getConfigValue("script.ognl.mode", mode);
         allowedClasses = getConfigValue("script.ognl.allowed.classes", allowedClasses);
         deniedPackages = getConfigValue("script.ognl.denied.packages", deniedPackages);
@@ -215,15 +215,6 @@ public class OgnlEngine extends AbstractScriptEngine {
     }
 
     /**
-     * Returns whether the sandbox is applied.
-     *
-     * @return true when running in strict mode
-     */
-    protected boolean isStrict() {
-        return strict;
-    }
-
-    /**
      * Reads a plugin setting from system.properties, falling back to the given default.
      *
      * @param key the setting key, without the {@code fess.system.} prefix
@@ -298,7 +289,7 @@ public class OgnlEngine extends AbstractScriptEngine {
         if (script.length() <= maxScriptLogLength) {
             return script;
         }
-        return script.substring(0, maxScriptLogLength - 3) + "...";
+        return script.substring(0, Math.max(0, maxScriptLogLength - 3)) + "...";
     }
 
     /**
@@ -384,7 +375,8 @@ public class OgnlEngine extends AbstractScriptEngine {
      * Writes one audit log entry for a script execution.
      * <p>
      * Unlike the Groovy engine, this is called only on the first evaluation of a given
-     * expression, because OGNL expressions are evaluated once per document per field.
+     * expression since the expression was last cached, because OGNL expressions are evaluated
+     * once per document per field.
      *
      * @param script the script content that was executed
      * @param result the execution result, such as {@code "success"} or {@code "failure:ArithmeticException"}

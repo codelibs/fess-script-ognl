@@ -773,6 +773,34 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         assertNull(ognlEngine.evaluate("person.address.city", params));
     }
 
+    // pom.xml pins ognl.version to 3.4.7 deliberately: OGNL 3.4.9+ removed the null-chain
+    // short-circuit in property access, so evaluating "a.b.c" when "a.b" is null THROWS on
+    // 3.4.9+ instead of returning null as it does on 3.4.7. Fess data store expressions
+    // routinely read fields that may be absent on a given document, producing exactly this
+    // pattern of null intermediate values (see "Why OGNL 3.4.7" in README.md).
+    //
+    // OgnlEngine.evaluate() swallows every failure and returns null, so a test written
+    // against evaluate() (like test_evaluate_nullPropertyAccess above) cannot tell a
+    // 3.4.7-style null short-circuit apart from a 3.4.9+-style thrown exception - both come
+    // back as null. This test calls ognl.Ognl directly, bypassing evaluate()'s null-swallowing,
+    // so it fails loudly if this plugin is ever built against ognl 3.4.9 or later.
+    //
+    // Do not delete this test to make a version bump pass; if it fails after bumping
+    // ognl.version, that failure is the point - it means the null-chain regression this pin
+    // exists to avoid is back.
+    @Test
+    public void test_ognl347Pin_nullPropertyChainDoesNotThrow() throws Exception {
+        final Map<String, Object> a = new HashMap<>();
+        a.put("b", null); // "a.b" is present as a key but its value is null.
+        final Map<String, Object> root = new HashMap<>();
+        root.put("a", a);
+
+        final Object node = ognl.Ognl.parseExpression("a.b.c");
+        final Object value = ognl.Ognl.getValue(node, root);
+
+        assertNull(value);
+    }
+
     // ========================================
     // Large/Edge Case Expression Tests
     // ========================================
@@ -1069,6 +1097,49 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         engine.evaluate("1 / 0", params);
         assertEquals(2, logs.size());
         assertEquals("1 / 0|failure:ArithmeticException", logs.get(1));
+    }
+
+    @Test
+    public void test_evaluateFailureLog_omitsParameterValues() {
+        // OgnlEngine logs safeParamMap.keySet() - not the map itself - on evaluation failure,
+        // specifically so that parameter VALUES (crawled document bodies, potentially
+        // credentials) never reach the log; only the key names do. This attaches a real log4j2
+        // appender directly to OgnlEngine's logger and asserts the captured message contains
+        // the parameter key but not its value, so that a change back to logging safeParamMap
+        // itself - e.g. "to see what's happening" while debugging a mapping problem - fails
+        // this test instead of only showing up as a leak in a production log file.
+        final java.util.List<String> messages = new java.util.ArrayList<>();
+        final org.apache.logging.log4j.core.appender.AbstractAppender appender =
+                new org.apache.logging.log4j.core.appender.AbstractAppender("ognlEngineTestAppender", null, null, false,
+                        org.apache.logging.log4j.core.config.Property.EMPTY_ARRAY) {
+                    @Override
+                    public void append(final org.apache.logging.log4j.core.LogEvent event) {
+                        messages.add(event.getMessage().getFormattedMessage());
+                    }
+                };
+        appender.start();
+
+        final org.apache.logging.log4j.core.Logger coreLogger =
+                (org.apache.logging.log4j.core.Logger) org.apache.logging.log4j.LogManager.getLogger(OgnlEngine.class);
+        final org.apache.logging.log4j.Level originalLevel = coreLogger.getLevel();
+        coreLogger.addAppender(appender);
+        coreLogger.setLevel(org.apache.logging.log4j.Level.WARN);
+
+        try {
+            final Map<String, Object> params = new HashMap<>();
+            params.put("secretParam", "TOP-SECRET-VALUE-12345");
+
+            ognlEngine.evaluate("1 / 0", params);
+
+            assertEquals(1, messages.size());
+            final String message = messages.get(0);
+            assertTrue("failure log must mention the parameter key", message.contains("secretParam"));
+            assertFalse("failure log must not leak the parameter value", message.contains("TOP-SECRET-VALUE-12345"));
+        } finally {
+            coreLogger.removeAppender(appender);
+            coreLogger.setLevel(originalLevel);
+            appender.stop();
+        }
     }
 
     @Test

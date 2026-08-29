@@ -19,9 +19,27 @@ import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.codelibs.fess.mylasta.direction.FessConfig;
+import org.codelibs.fess.util.ComponentUtil;
 import org.junit.jupiter.api.Test;
+import org.lastaflute.di.core.factory.SingletonLaContainerFactory;
 
 public class OgnlSandboxTest extends UnitScriptTestCase {
+
+    // test_mode_readFromConfig_normalizesWhitespaceAndCase registers "systemHelper" directly
+    // into the real LastaDi container (SingletonLaContainerFactory.getContainer()) so that
+    // ComponentUtil.available() is true and OgnlEngine.getConfigValue() takes its real,
+    // config-reading branch instead of the identity fallback it takes when unavailable. That
+    // container is a JVM-lifetime singleton with no unregister API, so without isolation the
+    // registration would leak into every test that runs afterward in the same fork. Declaring
+    // isUseOneTimeContainer() rebuilds (and destroys) a container scoped to each test method
+    // here, so the registration cannot escape this class - the same idiom already used
+    // elsewhere in Fess for tests that register components directly (see FessPropTest,
+    // ComponentUtilTest).
+    @Override
+    protected boolean isUseOneTimeContainer() {
+        return true;
+    }
 
     private OgnlEngine strictEngine() {
         final OgnlEngine engine = new OgnlEngine();
@@ -50,6 +68,51 @@ public class OgnlSandboxTest extends UnitScriptTestCase {
         // null in compat mode too, which would make this assertion pass for the wrong reason.
         assertNull("Class metadata access must be blocked", engine.evaluate("value.getClass().getName()", params));
         assertNull("container must not be exposed", engine.evaluate("container", params));
+    }
+
+    @Test
+    public void test_mode_readFromConfig_normalizesWhitespaceAndCase() {
+        // script.ognl.mode is a security control's on-switch, so a silent fall-back to compat
+        // mode is the worst failure mode here - this guards the .trim() and equalsIgnoreCase()
+        // in OgnlEngine.getConfigValue()/init() against regressing, e.g. a config line reading
+        // "strict " (with a trailing space, as system.properties preserves it verbatim)
+        // silently disabling the sandbox instead of enabling it.
+        //
+        // OgnlEngine.getConfigValue() only trims when ComponentUtil.available() is true; with
+        // no FessConfig/systemHelper wired (the case everywhere else in this test suite) it
+        // takes an identity-fallback branch that does NOT trim, so a plain setMode(" STRICT ")
+        // + init() would not actually exercise the .trim()/equalsIgnoreCase() code this test
+        // guards. Registering a minimal systemHelper directly makes available() true; the
+        // FessConfig below simulates "no override configured for this key" by echoing the
+        // default straight back, so getConfigValue() must trim/case-normalize it exactly as it
+        // would a real system.properties value of the same shape.
+        SingletonLaContainerFactory.getContainer().register(new Object(), "systemHelper");
+        final FessConfig fessConfig = new FessConfig.SimpleImpl() {
+            @Override
+            public String getSystemProperty(final String key, final String defaultValue) {
+                return defaultValue;
+            }
+
+            @Override
+            public boolean isScriptAuditLogEnabled() {
+                // init() also reads this; FessConfig.SimpleImpl backs only overridden getters
+                // and throws NPE on any other one (no properties are loaded in a bare
+                // SimpleImpl), so it must be stubbed too even though this test does not
+                // exercise audit logging.
+                return false;
+            }
+        };
+        ComponentUtil.setFessConfig(fessConfig);
+
+        final OgnlEngine engine = new OgnlEngine();
+        engine.setMode(" STRICT ");
+        engine.init();
+
+        final Map<String, Object> params = new HashMap<>();
+        params.put("value", "Hello");
+
+        assertNull("mode \" STRICT \" resolved through the real config-reading path must still apply the sandbox",
+                engine.evaluate("@java.lang.System@getProperty(\"user.name\")", params));
     }
 
     @Test
