@@ -1142,6 +1142,81 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         }
     }
 
+    /** Collects the WARN messages OgnlEngine emits while {@code body} runs. */
+    private List<String> captureWarnings(final Runnable body) {
+        final java.util.List<String> messages = new java.util.ArrayList<>();
+        final org.apache.logging.log4j.core.appender.AbstractAppender appender =
+                new org.apache.logging.log4j.core.appender.AbstractAppender("ognlEngineJobNameAppender", null, null, false,
+                        org.apache.logging.log4j.core.config.Property.EMPTY_ARRAY) {
+                    @Override
+                    public void append(final org.apache.logging.log4j.core.LogEvent event) {
+                        messages.add(event.getMessage().getFormattedMessage());
+                    }
+                };
+        appender.start();
+        final org.apache.logging.log4j.core.Logger coreLogger =
+                (org.apache.logging.log4j.core.Logger) org.apache.logging.log4j.LogManager.getLogger(OgnlEngine.class);
+        final org.apache.logging.log4j.Level originalLevel = coreLogger.getLevel();
+        coreLogger.addAppender(appender);
+        coreLogger.setLevel(org.apache.logging.log4j.Level.WARN);
+        try {
+            body.run();
+        } finally {
+            coreLogger.removeAppender(appender);
+            coreLogger.setLevel(originalLevel);
+            appender.stop();
+        }
+        return messages;
+    }
+
+    @Test
+    public void test_evaluate_failureWarnsWithTheJobName() {
+        // A swallowed failure leaves the scheduler job with a successful status, so the warning is
+        // the only record of it. Without the job name the warning cannot be matched to the job.
+        final org.codelibs.fess.opensearch.config.exentity.ScheduledJob scheduledJob =
+                new org.codelibs.fess.opensearch.config.exentity.ScheduledJob();
+        scheduledJob.setId("J1");
+        scheduledJob.setName("Migrated Crawler");
+        final OgnlEngine engine = new OgnlEngine() {
+            @Override
+            protected org.codelibs.fess.opensearch.config.exentity.ScheduledJob getCurrentScheduledJob() {
+                return scheduledJob;
+            }
+        };
+        final List<String> messages = captureWarnings(() -> assertNull(engine.evaluate("1 / 0", new HashMap<>())));
+        assertTrue("the warning must name the job whose script failed: " + messages,
+                messages.stream().anyMatch(m -> m.contains("job=Migrated Crawler(id=J1)")));
+    }
+
+    @Test
+    public void test_evaluate_failureWarnsWithoutAJob() {
+        // Document boosts, crawler field scripts and path mappings run outside the scheduler.
+        final List<String> messages = captureWarnings(() -> assertNull(ognlEngine.evaluate("1 / 0", new HashMap<>())));
+        assertTrue("an evaluation outside a scheduled job must say so: " + messages,
+                messages.stream().anyMatch(m -> m.contains("job=none")));
+    }
+
+    @Test
+    public void test_evaluate_expressionMaxLengthWarnsWithTheJobName() {
+        // An over-long expression is rejected before it is ever parsed, so this path returns null
+        // without an exception at all - the warning is the only trace it leaves.
+        final org.codelibs.fess.opensearch.config.exentity.ScheduledJob scheduledJob =
+                new org.codelibs.fess.opensearch.config.exentity.ScheduledJob();
+        scheduledJob.setId("J2");
+        scheduledJob.setName("Long Expression Job");
+        final OgnlEngine engine = new OgnlEngine() {
+            @Override
+            protected org.codelibs.fess.opensearch.config.exentity.ScheduledJob getCurrentScheduledJob() {
+                return scheduledJob;
+            }
+        };
+        engine.setExpressionMaxLength(20);
+        final List<String> messages =
+                captureWarnings(() -> assertNull(engine.evaluate("'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'", new HashMap<>())));
+        assertTrue("the length warning must name the job as well: " + messages,
+                messages.stream().anyMatch(m -> m.contains("job=Long Expression Job(id=J2)")));
+    }
+
     @Test
     public void test_isExpressionCompilerAvailable() {
         // javassist reaches Fess through org.lastaflute:lasta-di and is required by ognl.

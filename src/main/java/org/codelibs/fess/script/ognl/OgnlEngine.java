@@ -312,7 +312,8 @@ public class OgnlEngine extends AbstractScriptEngine {
             return null;
         }
         if (template.length() > expressionMaxLength) {
-            logger.warn("The ognl expression exceeds the maximum length {}: {}", expressionMaxLength, abbreviateScript(template));
+            logger.warn("The ognl expression exceeds the maximum length {}: job={}, {}", expressionMaxLength, describeCurrentJob(),
+                    abbreviateScript(template));
             return null;
         }
         final Map<String, Object> safeParamMap = paramMap != null ? paramMap : Collections.emptyMap();
@@ -336,7 +337,8 @@ public class OgnlEngine extends AbstractScriptEngine {
             throw e;
         } catch (final Exception e) {
             auditFailure(expression, template, e);
-            logger.warn("Failed to evaluate ognl script: {} => {}", abbreviateScript(template), safeParamMap.keySet(), e);
+            logger.warn("Failed to evaluate ognl script: job={}, {} => {}", describeCurrentJob(), abbreviateScript(template),
+                    safeParamMap.keySet(), e);
             return null;
         }
     }
@@ -369,6 +371,25 @@ public class OgnlEngine extends AbstractScriptEngine {
             }
         }
         return null;
+    }
+
+    /**
+     * Describes the scheduled job the current evaluation belongs to, for the warnings in
+     * {@link #evaluate(String, Map)}.
+     *
+     * <p>An expression that is rejected or that fails returns null instead of propagating, so a
+     * scheduler job whose script cannot be evaluated is still recorded with a successful status.
+     * Naming the job here is what ties that job log entry back to the warning; the expression text
+     * on its own does not say which job produced it.</p>
+     *
+     * @return the job name and id, or "none" when the evaluation is not part of a scheduled job
+     */
+    protected String describeCurrentJob() {
+        final ScheduledJob job = getCurrentScheduledJob();
+        if (job == null) {
+            return "none";
+        }
+        return job.getName() + "(id=" + job.getId() + ")";
     }
 
     /**
