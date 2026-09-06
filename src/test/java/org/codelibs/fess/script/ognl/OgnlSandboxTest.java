@@ -19,6 +19,7 @@ import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.codelibs.fess.exception.ScriptEngineException;
 import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.util.ComponentUtil;
 import org.junit.jupiter.api.Test;
@@ -61,13 +62,29 @@ public class OgnlSandboxTest extends UnitScriptTestCase {
         final Map<String, Object> params = new HashMap<>();
         params.put("value", "Hello");
 
-        assertNull("System must be blocked", engine.evaluate("@java.lang.System@getProperty(\"user.name\")", params));
-        assertNull("java.io must be blocked", engine.evaluate("new java.io.File(\"/etc/hosts\").exists()", params));
+        assertBlocked(engine, "@java.lang.System@getProperty(\"user.name\")", params, "System");
+        assertBlocked(engine, "new java.io.File(\"/etc/hosts\").exists()", params, "java.io");
         // getName() is declared on java.lang.Class, which is on the deny list. Deliberately not
         // getClassLoader(): String is loaded by the bootstrap loader, so getClassLoader() returns
         // null in compat mode too, which would make this assertion pass for the wrong reason.
-        assertNull("Class metadata access must be blocked", engine.evaluate("value.getClass().getName()", params));
-        assertNull("container must not be exposed", engine.evaluate("container", params));
+        assertBlocked(engine, "value.getClass().getName()", params, "Class metadata access");
+        assertBlocked(engine, "container", params, "container");
+    }
+
+    /**
+     * Asserts that the sandbox did not let an expression produce its value.
+     *
+     * <p>The two shapes a refusal takes: where the sandbox refuses a member or a class OGNL
+     * raises, and the engine reports that as a failed evaluation rather than answering null;
+     * where the expression simply resolves to nothing, it evaluates to null. Neither returns
+     * what the expression asked for, which is the property under test.</p>
+     */
+    private void assertBlocked(final OgnlEngine engine, final String expression, final Map<String, Object> params, final String what) {
+        try {
+            assertNull(what + " must be blocked", engine.evaluate(expression, params));
+        } catch (final ScriptEngineException e) {
+            // refused by the sandbox, and reported instead of silently answering null
+        }
     }
 
     @Test
@@ -111,8 +128,8 @@ public class OgnlSandboxTest extends UnitScriptTestCase {
         final Map<String, Object> params = new HashMap<>();
         params.put("value", "Hello");
 
-        assertNull("mode \" STRICT \" resolved through the real config-reading path must still apply the sandbox",
-                engine.evaluate("@java.lang.System@getProperty(\"user.name\")", params));
+        assertBlocked(engine, "@java.lang.System@getProperty(\"user.name\")", params,
+                "mode \" STRICT \" resolved through the real config-reading path");
     }
 
     @Test

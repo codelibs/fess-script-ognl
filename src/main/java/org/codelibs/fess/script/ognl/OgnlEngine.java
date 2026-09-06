@@ -25,6 +25,7 @@ import org.apache.logging.log4j.Logger;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.fess.Constants;
 import org.codelibs.fess.exception.JobProcessingException;
+import org.codelibs.fess.exception.ScriptEngineException;
 import org.codelibs.fess.opensearch.config.exentity.ScheduledJob;
 import org.codelibs.fess.script.AbstractScriptEngine;
 import org.codelibs.fess.script.ognl.OgnlExpressionCache.CachedExpression;
@@ -314,7 +315,8 @@ public class OgnlEngine extends AbstractScriptEngine {
         if (template.length() > expressionMaxLength) {
             logger.warn("The ognl expression exceeds the maximum length {}: job={}, {}", expressionMaxLength, describeCurrentJob(),
                     abbreviateScript(template));
-            return null;
+            throw new ScriptEngineException(
+                    "The expression exceeds the maximum length " + expressionMaxLength + ": " + abbreviateScript(template));
         }
         final Map<String, Object> safeParamMap = paramMap != null ? paramMap : Collections.emptyMap();
         final Map<String, Object> bindingMap = new HashMap<>(safeParamMap);
@@ -339,7 +341,13 @@ public class OgnlEngine extends AbstractScriptEngine {
             auditFailure(expression, template, e);
             logger.warn("Failed to evaluate ognl script: job={}, {} => {}", describeCurrentJob(), abbreviateScript(template),
                     safeParamMap.keySet(), e);
-            return null;
+            // A failure has to leave the method as a failure. Returning null made it
+            // indistinguishable from an expression that evaluates to null, so a scheduled job
+            // whose expression does not even parse was recorded as ok in the job log. The message
+            // names the expression rather than repeating the cause, which is carried by the cause
+            // itself and logged above; ScriptExecutorJob puts this message in the job log's
+            // script_result, where naming the expression that failed is what identifies it.
+            throw new ScriptEngineException("Failed to evaluate the expression: " + abbreviateScript(template), e);
         }
     }
 
@@ -377,10 +385,9 @@ public class OgnlEngine extends AbstractScriptEngine {
      * Describes the scheduled job the current evaluation belongs to, for the warnings in
      * {@link #evaluate(String, Map)}.
      *
-     * <p>An expression that is rejected or that fails returns null instead of propagating, so a
-     * scheduler job whose script cannot be evaluated is still recorded with a successful status.
-     * Naming the job here is what ties that job log entry back to the warning; the expression text
-     * on its own does not say which job produced it.</p>
+     * <p>The warnings carry the expression text, which on its own does not say which job
+     * produced it, so the job is named here as well: with several jobs sharing an expression
+     * shape, that is what ties the warning to the job whose expression failed.</p>
      *
      * @return the job name and id, or "none" when the evaluation is not part of a scheduled job
      */

@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.codelibs.fess.exception.JobProcessingException;
+import org.codelibs.fess.exception.ScriptEngineException;
 import org.codelibs.fess.util.ComponentUtil;
 import org.codelibs.fess.script.ognl.UnitScriptTestCase;
 import org.codelibs.fess.script.ScriptEngine;
@@ -358,10 +359,19 @@ public class OgnlEngineTest extends UnitScriptTestCase {
     public void test_evaluate_invalidExpression() {
         final Map<String, Object> params = new HashMap<>();
 
-        // Invalid OGNL syntax should return null and log warning
-        assertNull(ognlEngine.evaluate("this is not valid ognl @#$%", params));
-        assertNull(ognlEngine.evaluate("a +", params));
-        assertNull(ognlEngine.evaluate("(unclosed parenthesis", params));
+        // Invalid OGNL syntax is reported, not answered with null: null is what a valid
+        // expression returns when it evaluates to nothing, so the two have to differ.
+        org.junit.jupiter.api.Assertions.assertThrows(ScriptEngineException.class,
+                () -> ognlEngine.evaluate("this is not valid ognl @#$%", params));
+        org.junit.jupiter.api.Assertions.assertThrows(ScriptEngineException.class, () -> ognlEngine.evaluate("a +", params));
+        org.junit.jupiter.api.Assertions.assertThrows(ScriptEngineException.class,
+                () -> ognlEngine.evaluate("(unclosed parenthesis", params));
+    }
+
+    @Test
+    public void test_evaluate_anExpressionThatEvaluatesToNullIsNotAFailure() {
+        // The reason the failure could not be reported before: both outcomes were null.
+        assertNull(ognlEngine.evaluate("null", new HashMap<>()));
     }
 
     @Test
@@ -398,8 +408,8 @@ public class OgnlEngineTest extends UnitScriptTestCase {
     public void test_evaluate_divisionByZero() {
         final Map<String, Object> params = new HashMap<>();
 
-        // Division by zero should return null and log warning
-        assertNull(ognlEngine.evaluate("10 / 0", params));
+        // Division by zero is reported and logged
+        org.junit.jupiter.api.Assertions.assertThrows(ScriptEngineException.class, () -> ognlEngine.evaluate("10 / 0", params));
     }
 
     // ========================================
@@ -1093,8 +1103,8 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         assertEquals(1, logs.size());
         assertEquals("value|success", logs.get(0));
 
-        engine.evaluate("1 / 0", params);
-        engine.evaluate("1 / 0", params);
+        org.junit.jupiter.api.Assertions.assertThrows(ScriptEngineException.class, () -> engine.evaluate("1 / 0", params));
+        org.junit.jupiter.api.Assertions.assertThrows(ScriptEngineException.class, () -> engine.evaluate("1 / 0", params));
         assertEquals(2, logs.size());
         assertEquals("1 / 0|failure:ArithmeticException", logs.get(1));
     }
@@ -1129,7 +1139,7 @@ public class OgnlEngineTest extends UnitScriptTestCase {
             final Map<String, Object> params = new HashMap<>();
             params.put("secretParam", "TOP-SECRET-VALUE-12345");
 
-            ognlEngine.evaluate("1 / 0", params);
+            org.junit.jupiter.api.Assertions.assertThrows(ScriptEngineException.class, () -> ognlEngine.evaluate("1 / 0", params));
 
             assertEquals(1, messages.size());
             final String message = messages.get(0);
@@ -1171,8 +1181,8 @@ public class OgnlEngineTest extends UnitScriptTestCase {
 
     @Test
     public void test_evaluate_failureWarnsWithTheJobName() {
-        // A swallowed failure leaves the scheduler job with a successful status, so the warning is
-        // the only record of it. Without the job name the warning cannot be matched to the job.
+        // The warning carries the expression, which on its own does not say which job produced
+        // it, so the job is named as well.
         final org.codelibs.fess.opensearch.config.exentity.ScheduledJob scheduledJob =
                 new org.codelibs.fess.opensearch.config.exentity.ScheduledJob();
         scheduledJob.setId("J1");
@@ -1183,7 +1193,8 @@ public class OgnlEngineTest extends UnitScriptTestCase {
                 return scheduledJob;
             }
         };
-        final List<String> messages = captureWarnings(() -> assertNull(engine.evaluate("1 / 0", new HashMap<>())));
+        final List<String> messages = captureWarnings(() -> org.junit.jupiter.api.Assertions.assertThrows(ScriptEngineException.class,
+                () -> engine.evaluate("1 / 0", new HashMap<>())));
         assertTrue("the warning must name the job whose script failed: " + messages,
                 messages.stream().anyMatch(m -> m.contains("job=Migrated Crawler(id=J1)")));
     }
@@ -1191,15 +1202,16 @@ public class OgnlEngineTest extends UnitScriptTestCase {
     @Test
     public void test_evaluate_failureWarnsWithoutAJob() {
         // Document boosts, crawler field scripts and path mappings run outside the scheduler.
-        final List<String> messages = captureWarnings(() -> assertNull(ognlEngine.evaluate("1 / 0", new HashMap<>())));
+        final List<String> messages = captureWarnings(() -> org.junit.jupiter.api.Assertions.assertThrows(ScriptEngineException.class,
+                () -> ognlEngine.evaluate("1 / 0", new HashMap<>())));
         assertTrue("an evaluation outside a scheduled job must say so: " + messages,
                 messages.stream().anyMatch(m -> m.contains("job=none")));
     }
 
     @Test
     public void test_evaluate_expressionMaxLengthWarnsWithTheJobName() {
-        // An over-long expression is rejected before it is ever parsed, so this path returns null
-        // without an exception at all - the warning is the only trace it leaves.
+        // An over-long expression is rejected before it is ever parsed. It is still a refusal to
+        // evaluate, so it is reported like any other, and the warning names the job.
         final org.codelibs.fess.opensearch.config.exentity.ScheduledJob scheduledJob =
                 new org.codelibs.fess.opensearch.config.exentity.ScheduledJob();
         scheduledJob.setId("J2");
@@ -1211,8 +1223,8 @@ public class OgnlEngineTest extends UnitScriptTestCase {
             }
         };
         engine.setExpressionMaxLength(20);
-        final List<String> messages =
-                captureWarnings(() -> assertNull(engine.evaluate("'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'", new HashMap<>())));
+        final List<String> messages = captureWarnings(() -> org.junit.jupiter.api.Assertions.assertThrows(ScriptEngineException.class,
+                () -> engine.evaluate("'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'", new HashMap<>())));
         assertTrue("the length warning must name the job as well: " + messages,
                 messages.stream().anyMatch(m -> m.contains("job=Long Expression Job(id=J2)")));
     }
@@ -1235,6 +1247,7 @@ public class OgnlEngineTest extends UnitScriptTestCase {
         while (buf.length() <= 20) {
             buf.append(" + value");
         }
-        assertNull(ognlEngine.evaluate(buf.toString(), params));
+        final String tooLong = buf.toString();
+        org.junit.jupiter.api.Assertions.assertThrows(ScriptEngineException.class, () -> ognlEngine.evaluate(tooLong, params));
     }
 }
